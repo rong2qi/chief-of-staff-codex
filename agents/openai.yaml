@@ -1,0 +1,7 @@
+interface:
+  display_name: "Chief of Staff"
+  short_description: "Coordinate projects through one accountable main task"
+  default_prompt: "Use $chief-of-staff to initialize and coordinate this project."
+policy:
+  allow_implicit_invocation: true
+
