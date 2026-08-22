@@ -84,7 +84,7 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             value,
             {
                 "schema_version", "project_name", "primary_task_title", "control_plane",
-                "task_title_pattern", "approval_required",
+                "pin_primary_task", "task_title_pattern", "approval_required",
             },
             relative,
             errors,
@@ -100,6 +100,8 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 errors.append(
                     f"primary_task_title in {relative} must be {expected_title!r}"
                 )
+        if "pin_primary_task" in value and not isinstance(value["pin_primary_task"], bool):
+            errors.append(f"pin_primary_task in {relative} must be a boolean")
         approvals = value.get("approval_required")
         if not isinstance(approvals, list) or not all(isinstance(item, str) for item in approvals):
             errors.append(f"approval_required in {relative} must be an array of strings")
@@ -225,9 +227,12 @@ def initialize(target: Path, project_name: str) -> int:
             if relative == Path(".chief-of-staff/project.json"):
                 try:
                     existing_project = json.loads(destination.read_text(encoding="utf-8"))
-                    legacy_project = json.loads(expected.decode("utf-8"))
-                    legacy_project["primary_task_title"] = "Chief of Staff"
-                    if existing_project == legacy_project:
+                    expected_project = json.loads(expected.decode("utf-8"))
+                    previous_dynamic = dict(expected_project)
+                    previous_dynamic.pop("pin_primary_task", None)
+                    previous_legacy = dict(previous_dynamic)
+                    previous_legacy["primary_task_title"] = "Chief of Staff"
+                    if existing_project in (previous_dynamic, previous_legacy):
                         planned.append((destination, expected))
                         continue
                 except (OSError, UnicodeDecodeError, json.JSONDecodeError):

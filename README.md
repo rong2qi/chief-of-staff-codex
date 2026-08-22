@@ -14,13 +14,14 @@
 
 ### 它能做什么
 
-Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。主任务会根据项目名自动命名为 `Chief of <项目名>`，例如 `Chief of 个人web`。你只需要和这个主任务交流；它负责拆解目标、创建需要长期独立上下文的任务、收集结构化汇报，并向你提供最终总结。
+Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。主任务会根据项目名自动命名为 `Chief of <项目名>`，例如 `Chief of 个人web`，并在初始化后自动置顶。你只需要和这个主任务交流；它负责拆解目标、创建需要长期独立上下文的任务、收集结构化汇报，并向你提供最终总结。
 
 每个长期任务可以根据工作内容自动选择已安装的 Skill，也可以召集临时 subagents 完成范围明确的调研、评审、测试或讨论。
 
 ### 核心能力
 
 - 每个项目拥有可区分的主任务名称：`Chief of <项目名>`。
+- 主任务在初始化完成后自动置顶。
 - 用户只与一个统一负责的主任务交互。
 - 长期任务统一命名为 `职务｜工作成果`。
 - 长期任务内部可以召开临时子代理会议。
@@ -65,11 +66,12 @@ cp -R chief-of-staff ~/.codex/skills/chief-of-staff
 ```json
 {
   "project_name": "个人web",
-  "primary_task_title": "Chief of 个人web"
+  "primary_task_title": "Chief of 个人web",
+  "pin_primary_task": true
 }
 ```
 
-Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。
+Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值；当 `pin_primary_task` 为 `true` 时，它随后会识别并置顶当前任务。只有工具确认成功后才会报告已置顶。
 
 初始化器还会创建：
 
@@ -130,13 +132,14 @@ python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
 
 ### What it does
 
-Chief of Staff gives each Codex project a single user-facing control point. The main task is named dynamically as `Chief of <project name>`, for example `Chief of Personal Web`. You talk to that main task; it decomposes the objective, creates durable tasks when separate long-lived context is useful, collects structured handoffs, and consolidates the final report.
+Chief of Staff gives each Codex project a single user-facing control point. The main task is named dynamically as `Chief of <project name>`, for example `Chief of Personal Web`, and is pinned automatically after initialization. You talk to that main task; it decomposes the objective, creates durable tasks when separate long-lived context is useful, collects structured handoffs, and consolidates the final report.
 
 Each durable task can use installed Skills automatically and can summon temporary subagents for bounded research, review, testing, or discussion.
 
 ### Key features
 
 - A distinguishable main task name for every project: `Chief of <project name>`.
+- Automatic pinning of the main task after initialization.
 - One accountable main task for user communication.
 - Durable tasks named `Role｜Work outcome`.
 - Temporary subagent meetings inside durable tasks.
@@ -181,11 +184,12 @@ When no project name is supplied, the initializer uses the project root director
 ```json
 {
   "project_name": "Personal Web",
-  "primary_task_title": "Chief of Personal Web"
+  "primary_task_title": "Chief of Personal Web",
+  "pin_primary_task": true
 }
 ```
 
-The Skill reads `primary_task_title` and renames the current main task to that exact value.
+The Skill reads `primary_task_title` and renames the current main task to that exact value. When `pin_primary_task` is `true`, it then resolves and pins the current task, reporting success only after tool confirmation.
 
 The initializer also creates:
 
