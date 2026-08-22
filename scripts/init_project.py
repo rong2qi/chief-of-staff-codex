@@ -92,6 +92,14 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
         for key in ("project_name", "primary_task_title", "control_plane", "task_title_pattern"):
             if key in value and not isinstance(value[key], str):
                 errors.append(f"{key} in {relative} must be a string")
+        project_name = value.get("project_name")
+        primary_task_title = value.get("primary_task_title")
+        if isinstance(project_name, str) and isinstance(primary_task_title, str):
+            expected_title = f"Chief of {project_name}"
+            if primary_task_title != expected_title:
+                errors.append(
+                    f"primary_task_title in {relative} must be {expected_title!r}"
+                )
         approvals = value.get("approval_required")
         if not isinstance(approvals, list) or not all(isinstance(item, str) for item in approvals):
             errors.append(f"approval_required in {relative} must be an array of strings")
@@ -214,6 +222,28 @@ def initialize(target: Path, project_name: str) -> int:
                 continue
             if destination.read_bytes() == expected:
                 continue
+            if relative == Path(".chief-of-staff/project.json"):
+                try:
+                    existing_project = json.loads(destination.read_text(encoding="utf-8"))
+                    legacy_project = json.loads(expected.decode("utf-8"))
+                    legacy_project["primary_task_title"] = "Chief of Staff"
+                    if existing_project == legacy_project:
+                        planned.append((destination, expected))
+                        continue
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                    pass
+            if relative == Path("AGENTS.md"):
+                current_text = expected.decode("utf-8")
+                legacy_text = current_text.replace(
+                    f"This project is coordinated through one primary Codex task named `Chief of {project_name}`.",
+                    "This project is coordinated through one primary Codex task titled `Chief of Staff`.",
+                ).replace(
+                    "- A task is the Chief of Staff only when its title matches the `primary_task_title` in `.chief-of-staff/project.json` or its initiating prompt explicitly assigns that role.",
+                    "- A task is the Chief of Staff only when its title or initiating prompt explicitly assigns that role.",
+                )
+                if destination.read_bytes() == legacy_text.encode("utf-8"):
+                    planned.append((destination, expected))
+                    continue
             conflicts.append(relative)
         else:
             planned.append((destination, expected))
@@ -238,7 +268,7 @@ def initialize(target: Path, project_name: str) -> int:
 
     action = "initialized" if planned else "already initialized"
     print(f"Chief of Staff {action}: {target}")
-    print(f"Files created: {len(planned)}")
+    print(f"Files written: {len(planned)}")
     return 0
 
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project_name": "{{PROJECT_NAME_JSON}}",
-  "primary_task_title": "Chief of Staff",
+  "primary_task_title": "Chief of {{PROJECT_NAME_JSON}}",
   "control_plane": "native",
   "task_title_pattern": "职务｜工作内容",
   "approval_required": [

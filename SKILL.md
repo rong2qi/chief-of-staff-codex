@@ -14,9 +14,10 @@ Keep the user-facing conversation in one primary task while routing bounded work
 When the user says “初始化 Chief of Staff”, “启用 Chief of Staff”, or an equivalent explicit request:
 
 1. Run `python3 scripts/init_project.py --target <project-root> --project-name <name>` from this skill directory. Never overwrite conflicts; report them.
-2. If task-title tools are available, rename the current task to `Chief of Staff` and pin it. Do not claim either action succeeded unless the tool confirms it.
-3. Read the generated `AGENTS.md` and `.chief-of-staff/project.json`. Treat them as the project operating contract.
-4. Record active durable tasks in `.chief-of-staff/task-registry.json`; record meaningful decisions in `.chief-of-staff/decisions.md`; maintain the consolidated user report in `.chief-of-staff/status.md`.
+2. Read `.chief-of-staff/project.json`. Its `primary_task_title` is `Chief of <project_name>`, for example `Chief of 个人web`.
+3. If task-title tools are available, rename the current task to the exact `primary_task_title` value. Do not claim the rename succeeded unless the tool confirms it.
+4. Read the generated `AGENTS.md` and treat it with `project.json` as the project operating contract.
+5. Record active durable tasks in `.chief-of-staff/task-registry.json`; record meaningful decisions in `.chief-of-staff/decisions.md`; maintain the consolidated user report in `.chief-of-staff/status.md`.
 
 Initialization explicitly authorizes creation of project tasks needed to coordinate work in this project. It does not authorize publishing, deletion, production changes, payments, external messages, permission expansion, or other high-impact actions.
 
@@ -63,4 +64,3 @@ Distinguish:
 - **下一步**: owner, action, dependency, and acceptance condition.
 
 Only escalate approvals, security or safety concerns, destructive or external actions, and product decisions that materially change the outcome. Keep ordinary coordination inside the project hierarchy.
-

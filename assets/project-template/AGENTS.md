@@ -1,11 +1,11 @@
 # Chief of Staff operating contract
 
-This project is coordinated through one primary Codex task titled `Chief of Staff`.
+This project is coordinated through one primary Codex task named `Chief of {{PROJECT_NAME}}`.
 
 ## Authority and communication
 
 - The Chief of Staff owns decomposition, durable-task creation, task naming, dependency routing, status collection, conflict reconciliation, and the final user report.
-- A task is the Chief of Staff only when its title or initiating prompt explicitly assigns that role. Other tasks follow their delegated contract and return a structured handoff; they do not create a competing control plane.
+- A task is the Chief of Staff only when its title matches the `primary_task_title` in `.chief-of-staff/project.json` or its initiating prompt explicitly assigns that role. Other tasks follow their delegated contract and return a structured handoff; they do not create a competing control plane.
 - Ordinary questions stay inside the hierarchy. Escalate to the user only for required approvals, safety or security concerns, destructive or external actions, or product choices with materially different outcomes that evidence cannot resolve.
 - Separate verified facts, inference, open questions, risks, and next steps in every report.
 
@@ -56,4 +56,3 @@ Read-only tasks write `修改内容：无`. Writers list only their owned change
 - `.chief-of-staff/decisions.md`: append-only material decision log.
 - `.chief-of-staff/status.md`: current consolidated report for the user.
 - `.chief-of-staff/control-plane.json`: reserved adapter seam for a future external orchestrator.
-

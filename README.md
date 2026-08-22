@@ -1,119 +1,26 @@
 # Chief of Staff for Codex / Codex 幕僚长
 
-> Coordinate a Codex project through one accountable main task, durable role-based tasks, and temporary subagent meetings.
->
 > 通过一个统一负责的主任务、按职务命名的长期任务，以及临时子代理会议来协调 Codex 项目。
+>
+> Coordinate a Codex project through one accountable main task, durable role-based tasks, and temporary subagent meetings.
 
-## English
+[中文](#中文) · [English](#english)
 
-### What it does
-
-Chief of Staff gives each Codex project a single user-facing control point. You talk to the `Chief of Staff` task; it decomposes the objective, creates durable tasks when separate long-lived context is useful, collects structured handoffs, and consolidates the final report.
-
-Each durable task can use installed Skills automatically and can summon temporary subagents for bounded research, review, testing, or discussion.
-
-### Key features
-
-- One accountable main task for user communication.
-- Durable tasks named `Role｜Work outcome`.
-- Temporary subagent meetings inside durable tasks.
-- Luna for read-only exploration, Terra as the sole implementation writer, and Sol for high-risk arbitration by default.
-- One writer per file, external record, branch, deployment target, or deliverable.
-- Structured handoffs that separate verified facts, inference, open questions, risks, and next steps.
-- Explicit user approval before deletion, production changes, releases, payments, external messages, or permission expansion.
-- Persistent project state with a reserved adapter seam for a future external control plane.
-
-### Requirements
-
-- A current Codex desktop app, Codex CLI, or IDE extension with Skills and subagents enabled.
-- Python 3.9 or newer for the project initializer.
-
-### Install
-
-Clone this repository, then copy or symlink it into your personal Codex Skills directory:
-
-```bash
-git clone https://github.com/rong2qi/chief-of-staff-codex.git chief-of-staff
-cp -R chief-of-staff ~/.codex/skills/chief-of-staff
-```
-
-Open a new Codex task after installation. Codex normally detects Skill changes automatically; restart it if the Skill does not appear.
-
-### Use
-
-Open the project in Codex and say:
-
-```text
-Initialize Chief of Staff for this project.
-```
-
-Or invoke the Skill explicitly:
-
-```text
-Use $chief-of-staff to initialize and coordinate this project.
-```
-
-The initializer creates:
-
-```text
-AGENTS.md
-.codex/
-├── config.toml
-└── agents/
-    ├── scout.toml
-    ├── implementer.toml
-    ├── verifier.toml
-    └── arbiter.toml
-.chief-of-staff/
-├── project.json
-├── task-registry.json
-├── decisions.md
-├── status.md
-└── control-plane.json
-```
-
-The initializer is idempotent. It preserves mutable project state and stops without writing when a managed instruction or configuration file conflicts with the template.
-
-Validate an initialized project with:
-
-```bash
-python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
-  --target /path/to/project \
-  --check
-```
-
-### Coordination model
-
-```text
-User
-└── Chief of Staff
-    ├── Product Lead｜Define requirements
-    │   └── Temporary research subagents
-    ├── Technical Lead｜Decide architecture
-    │   ├── Security subagent
-    │   └── API subagent
-    └── Implementation Lead｜Deliver the change
-        └── Verification subagents
-```
-
-Durable Codex tasks retain visible, independent context. Temporary subagents handle bounded work and report to their parent task. The Chief of Staff remains responsible for reconciling evidence and reporting to the user.
-
-### Current limits
-
-- Version 1 uses native Codex capabilities and does not modify the Codex client UI.
-- Closing Codex may stop active work; persistent coordination state is stored in project files and Codex task history.
-- An external control plane such as AWS CLI Agent Orchestrator is not installed. `control-plane.json` reserves a future integration point.
+<a id="中文"></a>
 
 ## 中文
 
+[跳转到 English](#english)
+
 ### 它能做什么
 
-Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。你只需要和 `Chief of Staff` 主任务交流；它负责拆解目标、创建需要长期独立上下文的任务、收集结构化汇报，并向你提供最终总结。
+Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。主任务会根据项目名自动命名为 `Chief of <项目名>`，例如 `Chief of 个人web`。你只需要和这个主任务交流；它负责拆解目标、创建需要长期独立上下文的任务、收集结构化汇报，并向你提供最终总结。
 
 每个长期任务可以根据工作内容自动选择已安装的 Skill，也可以召集临时 subagents 完成范围明确的调研、评审、测试或讨论。
 
 ### 核心能力
 
+- 每个项目拥有可区分的主任务名称：`Chief of <项目名>`。
 - 用户只与一个统一负责的主任务交互。
 - 长期任务统一命名为 `职务｜工作成果`。
 - 长期任务内部可以召开临时子代理会议。
@@ -147,13 +54,24 @@ cp -R chief-of-staff ~/.codex/skills/chief-of-staff
 初始化 Chief of Staff
 ```
 
-也可以显式调用：
+也可以显式指定项目名：
 
 ```text
-使用 $chief-of-staff 初始化并统筹这个项目。
+使用 $chief-of-staff 初始化这个项目，项目名为个人web。
 ```
 
-初始化器会创建：
+未显式指定项目名时，初始化器默认使用项目根目录名称。项目名会写入 `.chief-of-staff/project.json`，同时生成：
+
+```json
+{
+  "project_name": "个人web",
+  "primary_task_title": "Chief of 个人web"
+}
+```
+
+Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。
+
+初始化器还会创建：
 
 ```text
 AGENTS.md
@@ -186,7 +104,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
 
 ```text
 用户
-└── Chief of Staff
+└── Chief of 个人web
     ├── 产品负责人｜定义需求
     │   └── 临时用户研究 subagents
     ├── 技术负责人｜完成架构决策
@@ -196,13 +114,129 @@ python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
         └── 测试与复核 subagents
 ```
 
-长期 Codex 任务拥有可见、独立且可以持续的上下文；临时 subagents 只完成边界明确的工作并向父任务汇报。Chief of Staff 负责基于证据解决冲突并最终向用户汇报。
+长期 Codex 任务拥有可见、独立且可以持续的上下文；临时 subagents 只完成边界明确的工作并向父任务汇报。主任务负责基于证据解决冲突并最终向用户汇报。
 
 ### 当前限制
 
 - 第一版只使用 Codex 原生能力，不修改 Codex 客户端界面。
 - 关闭 Codex 可能会停止正在运行的任务；持久状态保存在项目文件和 Codex 任务历史中。
 - 当前不安装 AWS CLI Agent Orchestrator 等外置控制台；`control-plane.json` 仅预留未来适配入口。
+
+<a id="english"></a>
+
+## English
+
+[Go to 中文](#中文)
+
+### What it does
+
+Chief of Staff gives each Codex project a single user-facing control point. The main task is named dynamically as `Chief of <project name>`, for example `Chief of Personal Web`. You talk to that main task; it decomposes the objective, creates durable tasks when separate long-lived context is useful, collects structured handoffs, and consolidates the final report.
+
+Each durable task can use installed Skills automatically and can summon temporary subagents for bounded research, review, testing, or discussion.
+
+### Key features
+
+- A distinguishable main task name for every project: `Chief of <project name>`.
+- One accountable main task for user communication.
+- Durable tasks named `Role｜Work outcome`.
+- Temporary subagent meetings inside durable tasks.
+- Luna for read-only exploration, Terra as the sole implementation writer, and Sol for high-risk arbitration by default.
+- One writer per file, external record, branch, deployment target, or deliverable.
+- Structured handoffs that separate verified facts, inference, open questions, risks, and next steps.
+- Explicit user approval before deletion, production changes, releases, payments, external messages, or permission expansion.
+- Persistent project state with a reserved adapter seam for a future external control plane.
+
+### Requirements
+
+- A current Codex desktop app, Codex CLI, or IDE extension with Skills and subagents enabled.
+- Python 3.9 or newer for the project initializer.
+
+### Install
+
+Clone this repository, then copy or symlink it into your personal Codex Skills directory:
+
+```bash
+git clone https://github.com/rong2qi/chief-of-staff-codex.git chief-of-staff
+cp -R chief-of-staff ~/.codex/skills/chief-of-staff
+```
+
+Open a new Codex task after installation. Codex normally detects Skill changes automatically; restart it if the Skill does not appear.
+
+### Use
+
+Open the project in Codex and say:
+
+```text
+Initialize Chief of Staff for this project.
+```
+
+You can also provide the project name explicitly:
+
+```text
+Use $chief-of-staff to initialize this project with the project name Personal Web.
+```
+
+When no project name is supplied, the initializer uses the project root directory name. It writes the name and generated task title to `.chief-of-staff/project.json`:
+
+```json
+{
+  "project_name": "Personal Web",
+  "primary_task_title": "Chief of Personal Web"
+}
+```
+
+The Skill reads `primary_task_title` and renames the current main task to that exact value.
+
+The initializer also creates:
+
+```text
+AGENTS.md
+.codex/
+├── config.toml
+└── agents/
+    ├── scout.toml
+    ├── implementer.toml
+    ├── verifier.toml
+    └── arbiter.toml
+.chief-of-staff/
+├── project.json
+├── task-registry.json
+├── decisions.md
+├── status.md
+└── control-plane.json
+```
+
+The initializer is idempotent. It preserves mutable project state and stops without writing when a managed instruction or configuration file conflicts with the template.
+
+Validate an initialized project with:
+
+```bash
+python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
+  --target /path/to/project \
+  --check
+```
+
+### Coordination model
+
+```text
+User
+└── Chief of Personal Web
+    ├── Product Lead｜Define requirements
+    │   └── Temporary research subagents
+    ├── Technical Lead｜Decide architecture
+    │   ├── Security subagent
+    │   └── API subagent
+    └── Implementation Lead｜Deliver the change
+        └── Verification subagents
+```
+
+Durable Codex tasks retain visible, independent context. Temporary subagents handle bounded work and report to their parent task. The main task remains responsible for reconciling evidence and reporting to the user.
+
+### Current limits
+
+- Version 1 uses native Codex capabilities and does not modify the Codex client UI.
+- Closing Codex may stop active work; persistent coordination state is stored in project files and Codex task history.
+- An external control plane such as AWS CLI Agent Orchestrator is not installed. `control-plane.json` reserves a future integration point.
 
 ## Repository contents / 仓库内容
 

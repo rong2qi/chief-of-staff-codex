@@ -6,7 +6,7 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 
 - `schema_version`: currently `1`.
 - `project_name`: initialized project name.
-- `primary_task_title`: always `Chief of Staff` for v1.
+- `primary_task_title`: generated as `Chief of <project_name>`, for example `Chief of 个人web`.
 - `control_plane`: `native` for the Codex-native implementation.
 - `task_title_pattern`: durable task naming convention.
 - `approval_required`: actions that always require explicit user authorization.

@@ -1,4 +1,4 @@
-# Chief of Staff status — {{PROJECT_NAME}}
+# Chief of {{PROJECT_NAME}} status
 
 ## 已验证事实
 
@@ -19,4 +19,3 @@
 ## 下一步
 
 - Await the user's first project objective.
-
