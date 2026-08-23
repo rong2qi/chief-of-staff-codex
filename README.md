@@ -51,6 +51,7 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 ```bash
 git clone https://github.com/rong2qi/chief-of-staff-codex.git chief-of-staff
 cp -R chief-of-staff ~/.codex/skills/chief-of-staff
+cp -R chief-of-staff/context-handoff ~/.codex/skills/context-handoff
 ```
 
 安装后新建一个 Codex 任务。Codex 通常会自动检测 Skill 变化；如果没有出现，请重启 Codex。
@@ -176,6 +177,12 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 未完成项目的 Chief 汇报固定包含最终目标、当前阶段、已验证进展、正在工作的岗位、距最终交付的差距和下一检查点。只有全部最终验收标准都有证据时才能宣布项目完成。
 
+### 全局上下文无损接续
+
+仓库同时提供 `context-handoff` Skill。它只使用最新输入 token 与模型上下文窗口的比值：75%刷新检查点，85%在安全边界创建 `原对话名｜续N`，95%进入紧急迁移。累计 token 和账户限额不会被误当成上下文占用。
+
+项目迁移包保存在 `.codex/context-migrations/`，无项目任务保存在 `~/.codex/context-migrations/`。新对话必须返回 `MIGRATION_READY` 并核对目标、审批、任务关系、写入权、Git 状态、证据、下一步和全局规则，之后旧对话才归档；旧对话不会删除。若原生压缩降低占用则取消过期触发；若无法证明同一脏工作树连续性则保留旧对话并请求人工选择。
+
 ### 当前限制
 
 - 第一版只使用 Codex 原生能力，不修改 Codex 客户端界面。
@@ -223,6 +230,7 @@ Clone this repository, then copy or symlink it into your personal Codex Skills d
 ```bash
 git clone https://github.com/rong2qi/chief-of-staff-codex.git chief-of-staff
 cp -R chief-of-staff ~/.codex/skills/chief-of-staff
+cp -R chief-of-staff/context-handoff ~/.codex/skills/context-handoff
 ```
 
 Open a new Codex task after installation. Codex normally detects Skill changes automatically; restart it if the Skill does not appear.
@@ -348,6 +356,12 @@ The default hierarchy is `Chief → Phase Lead → Execution Role/temporary suba
 
 Every unfinished-project report includes the final goal, current phase, verified progress, active roles, remaining delivery gap, and next checkpoint. The Chief may declare completion only when every final acceptance criterion has supporting evidence.
 
+### Global loss-aware context rollover
+
+The repository also includes `context-handoff`. It uses only newest input tokens divided by the model context window: checkpoint at 75%, create `Original title｜Continuation N` at a safe boundary at 85%, and prioritize migration at 95%. Cumulative and account usage are ignored.
+
+Project bundles live in `.codex/context-migrations/`; projectless bundles live in `~/.codex/context-migrations/`. A successor must return `MIGRATION_READY` and match goals, approvals, task graph, write ownership, Git state, evidence, next action, and global instructions before the retained predecessor is archived. Native compaction cancels stale triggers; unproven dirty-worktree continuity requires a user decision.
+
 ### Current limits
 
 - Version 1 uses native Codex capabilities and does not modify the Codex client UI.
@@ -362,3 +376,4 @@ Every unfinished-project report includes the final goal, current phase, verified
 - `references/`: coordination protocol and persistent state schema / 协调协议与持久状态结构。
 - `assets/reminder-policy.example.json`: optional personal reminder policy example / 可选的个人提醒策略示例。
 - `agents/openai.yaml`: Codex UI metadata and implicit invocation policy / Codex 界面元数据与自动调用策略。
+- `context-handoff/`: global context checkpoint and verified rollover Skill / 全局上下文检查点与校验接续 Skill。

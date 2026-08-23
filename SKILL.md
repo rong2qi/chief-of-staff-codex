@@ -106,6 +106,12 @@ Unanswered-Chief reminders are one personal, cross-project service rather than o
 
 When disabled, pause every automation recorded by the policy so no scheduled run or notification occurs. When enabled, compile the user's timezone, inclusive daytime window, interval, and additional times into the exact schedule. Each run rebuilds a full snapshot and includes only unresolved explicit requests for approval, confirmation, decision, information, safety, or permissions. New Chief requests that require a reply end with `USER_ACTION_REQUIRED: <request_id>`; after a resolving user reply, the Chief records `USER_ACTION_RESOLVED: <request_id>`. The scanner still recognizes older unmarked requests. A user opening or reading a Chief does not clear an item; a later user reply that resolves, supersedes, or rejects the request does. The TODO task is read-only and never replies to a Chief or approves anything.
 
+## Preserve long-running context
+
+When the personal `context-handoff` Skill is installed, apply its 75% checkpoint, 85% rollover, and 95% emergency policy to the Chief and every durable role. A Chief bundle references all `.chief-of-staff` state and preserves goals, phases, evidence, task parents/depths, peer edges, cursors, approvals, unanswered actions, write ownership, and the next checkpoint.
+
+Require `MIGRATION_READY`. Migration cannot approve reports, change ownership, detach children, or complete acceptance. Only after parity may the successor inherit the pin and the predecessor be archived. If dirty-worktree continuity is not proven, keep the predecessor active and ask the user.
+
 ## Consolidate for the user
 
 Distinguish:
