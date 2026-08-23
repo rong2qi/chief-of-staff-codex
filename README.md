@@ -30,6 +30,8 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 - 所有长期子岗位绑定 Chief 所在的同一 Codex 项目；项目尚未保存时默认改用临时 subagents。
 - 活动中或待处理的岗位保留在 Recents 便于发现状态；最终汇报获批并登记后自动归档，减少长期堆积。
 - 长期任务内部可以召开临时子代理会议。
+- Chief 可为同项目岗位建立明确的对接关系；登记过的岗位可以直接交换依赖、接口与证据，并把结论抄送 Chief。
+- 每个长期岗位都能按需召集最多三个临时 subagents 开会，由岗位负责人综合结论。
 - 默认使用 Luna 进行只读侦察、Terra 作为唯一实施者、Sol 处理高风险裁决。
 - 同一文件、外部记录、分支、部署目标或交付物同时只有一个写入者。
 - 汇报明确区分已验证事实、推断、待确认项、风险和下一步。
@@ -80,7 +82,11 @@ cp -R chief-of-staff ~/.codex/skills/chief-of-staff
   "proactive_follow_up": true,
   "durable_child_scope": "same_project",
   "archive_completed_child_tasks": true,
-  "projectless_child_policy": "temporary_subagents"
+  "projectless_child_policy": "temporary_subagents",
+  "peer_coordination_enabled": true,
+  "peer_contact_policy": "registered_same_project",
+  "subagent_meetings_enabled": true,
+  "max_meeting_participants": 3
 }
 ```
 
@@ -138,6 +144,12 @@ python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
 Chief 创建长期岗位前会读取自己的 Codex `projectId`，用同一个项目目标创建子岗位，并把该 ID 写入任务登记。这样岗位的上下文、工作区和状态都归属于正确项目。若 Chief 尚未处在已保存项目中，它会优先使用临时 subagents；只有确实需要独立长期历史时才请你先选择或保存项目。
 
 Codex 会把长期任务视为可以独立恢复的任务，因此活动中的项目岗位仍可能出现在 Recents。这个入口的好处是集中显示运行、失败和等待人工处理的状态，避免必须逐个进入项目才能发现异常。当前版本采用折中生命周期：运行中、失败或待批复的岗位保持可见；最终汇报经你批准、证据写入项目状态且无需返工后，Chief 才将岗位归档。归档可恢复，不会删除任务 ID、结果摘要或项目内登记。
+
+### 岗位对接与多 Agent 会议
+
+Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建立双向 `coordination_with` 关系。登记后的岗位可以直接发送结构化对接消息，讨论依赖、接口、证据或交接；对接结论或未解决冲突必须回传 Chief。普通对接不需要你审批，也不会绕过 Chief 形成第二套项目计划。
+
+每个长期岗位可以自行召开临时 subagent 会议，默认最多三名参与者。会议必须有一个明确问题、互不重叠的角色、输入证据、停止条件和综合负责人。参与者默认只读，不能继续创建长期岗位；如需实施，仍只有一个写入者。岗位负责人等待全部结果后按证据综合，再将简明结论发给相关岗位与 Chief。
 
 ### 汇报批复机制
 
@@ -235,7 +247,11 @@ When no project name is supplied, the initializer uses the project root director
   "proactive_follow_up": true,
   "durable_child_scope": "same_project",
   "archive_completed_child_tasks": true,
-  "projectless_child_policy": "temporary_subagents"
+  "projectless_child_policy": "temporary_subagents",
+  "peer_coordination_enabled": true,
+  "peer_contact_policy": "registered_same_project",
+  "subagent_meetings_enabled": true,
+  "max_meeting_participants": 3
 }
 ```
 
@@ -293,6 +309,12 @@ Durable Codex tasks retain visible, independent context. Temporary subagents han
 Before creating a durable role, the Chief resolves its Codex `projectId`, creates the child against the same project target, and records that ID in the task registry. If the Chief is not in a saved project, it defaults to temporary subagents and asks the user to select or save a project only when separate durable history is necessary.
 
 Codex treats durable tasks as independently resumable tasks, so active project roles may still appear in Recents. That shared view is useful for surfacing running, failed, and needs-attention states without opening every project. This Skill therefore uses a lifecycle policy: active or actionable roles remain visible; after the user approves a final handoff, evidence is recorded, and no retry remains, the Chief archives the child. Archiving is reversible and preserves the task ID, result summary, and project registry record.
+
+### Peer coordination and multi-agent meetings
+
+The Chief creates symmetric `coordination_with` edges in `task-registry.json` for same-project roles with a real dependency. Registered peers may directly exchange structured messages about interfaces, evidence, dependencies, or handoffs, then copy the outcome or unresolved conflict back to the Chief. Routine coordination needs no human approval and cannot create a competing project plan.
+
+Every durable role may convene a temporary subagent meeting with up to three participants by default. A meeting has one question, non-overlapping roles, evidence inputs, a stopping condition, and a synthesis owner. Participants are read-only by default and cannot create durable roles; if implementation is included, exactly one participant owns the write surface. The parent waits for all results, reconciles them by evidence, and sends one concise outcome to affected peers and the Chief.
 
 ### Report approval workflow
 

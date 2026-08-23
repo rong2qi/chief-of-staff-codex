@@ -16,6 +16,10 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `durable_child_scope`: `same_project`; every durable child must use the Chief's saved project ID.
 - `archive_completed_child_tasks`: boolean; archive a child after approved final handoff and durable state capture.
 - `projectless_child_policy`: `temporary_subagents`; a projectless Chief must not silently create projectless durable tasks.
+- `peer_coordination_enabled`: boolean; permits bounded direct messages between registered same-project roles.
+- `peer_contact_policy`: `registered_same_project`; only Chief-approved registry edges may communicate directly.
+- `subagent_meetings_enabled`: boolean; permits durable roles to convene bounded temporary-agent meetings.
+- `max_meeting_participants`: positive integer; maximum temporary participants per meeting, default `3`.
 - `control_plane`: `native` for the Codex-native implementation.
 - `task_title_pattern`: durable task naming convention.
 - `approval_required`: actions that always require explicit user authorization.
@@ -34,7 +38,7 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 
 - `schema_version`: currently `1`.
 - `tasks`: array of durable task records.
-- Each task record requires `task_id`, `title`, `role`, `objective`, and `status` strings; `host_id`, `project_id`, `last_cursor`, `result_summary`, `parent_task_id`, and `phase_id` are strings or `null`; `management_depth` is a positive integer; `write_surface` and `depends_on` are arrays of strings.
+- Each task record requires `task_id`, `title`, `role`, `objective`, and `status` strings; `host_id`, `project_id`, `last_cursor`, `result_summary`, `parent_task_id`, and `phase_id` are strings or `null`; `management_depth` is a positive integer; `write_surface`, `depends_on`, and `coordination_with` are arrays of task-ID strings.
 - Unknown additional keys must be preserved so a future adapter can extend the format.
 
 ## approval-queue.json

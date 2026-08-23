@@ -49,6 +49,14 @@ Before delegation or implementation, record the goal, evidence, scope, non-scope
 - Active, queued, failed, or needs-attention child tasks remain visible for follow-up. Do not pin child tasks unless the user explicitly requests it.
 - Archive a durable child only after its final report is explicitly approved, its evidence and result are recorded, and no retry or dependent follow-up remains. Archiving is reversible and must not delete its registry entry, task ID, cursor, or summary.
 
+## Peer coordination and subagent meetings
+
+- Durable roles may message only peers listed in their `coordination_with` registry field, and only when both tasks have the same verified `project_id`. The Chief grants or revokes these contact edges.
+- A peer message has a bounded purpose, relevant evidence, the interface or dependency at issue, and the response needed. Routine peer sync does not require user approval, but the sender reports the resulting decision or unresolved conflict to the Chief.
+- Peer dialogue cannot transfer write ownership, expand scope, approve a report, or authorize a protected action. Conflicting assumptions or requested ownership changes go to the Chief before either task implements them.
+- When `subagent_meetings_enabled` is true, any durable role may summon up to `max_meeting_participants` temporary subagents for independent research, discussion, testing, or review. Participants are read-only by default, cannot create durable tasks, and do not add a management layer.
+- Every meeting records one question, participant roles, inputs, stopping condition, and synthesis owner. The parent waits for all requested results, reconciles them by evidence rather than vote, and sends one concise meeting outcome to affected peers and the Chief.
+
 ## Handoff
 
 Every delegated task ends with:

@@ -23,6 +23,8 @@ Acceptance checks: <commands or observable checks>
 Dependencies: <predecessors and required inputs>
 Prohibited changes: <protected surfaces and actions>
 Approval boundary: <actions requiring the user>
+Coordination peers: <registered task IDs and bounded purpose, or none>
+Meeting permission: enabled | disabled; max participants: <n>
 ```
 
 ## Routing
@@ -55,6 +57,18 @@ Depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role.
 For every active phase, monitor all known task IDs with bounded waits. When one task completes, fails, or needs attention, immediately snapshot all active task IDs, then update the registry and phase plan from the complete result set. This prevents the first event from hiding simultaneous progress and ensures an idle phase is either advanced, blocked with evidence, or escalated with an exact decision.
 
 Active durable children may appear in Recents as independently resumable tasks. Keep them visible while queued, running, failed, or needing attention. After an explicitly approved final handoff has been recorded and no retry or dependent follow-up remains, archive the child and mark its registry status `archived`. Preserve identifiers, cursor, evidence, and summary; archiving is reversible and is not deletion.
+
+## Peer-to-peer coordination
+
+The Chief adds symmetric `coordination_with` task-ID edges only for durable roles in the same verified project. A registered peer may send a direct coordination message containing: a stable coordination ID, purpose, relevant evidence, interface or dependency, exact response needed, and stopping condition. The receiver answers the sender, and the synthesis owner sends the outcome or unresolved conflict to the Chief.
+
+Routine peer coordination does not require user approval and does not count as a milestone report. It cannot change scope, transfer a write surface, approve a handoff, or authorize a protected action. If peers disagree about an interface or ownership, both pause the affected implementation surface and give the Chief their evidence and alternatives. If direct task messaging is unavailable, use the Chief as a relay without changing the protocol.
+
+## Temporary subagent meeting
+
+When enabled, any durable role may convene a meeting of at most `max_meeting_participants` temporary subagents. Define one question, non-overlapping participant roles, shared inputs, read-only defaults, expected evidence, synthesis owner, and stopping condition. Use one implementation writer only when implementation is explicitly part of the meeting; every other participant stays read-only.
+
+Participants may exchange evidence through the parent or runtime messaging tools, but they cannot create durable tasks or another management layer. The parent waits for every requested participant, reconciles findings by evidence rather than vote, and sends one outcome to registered affected peers and the Chief. Limit deliberation to two proposal/objection rounds and one independent verification; otherwise escalate the unresolved choice to the Chief.
 
 ## Report approval gate
 

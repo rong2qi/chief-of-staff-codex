@@ -48,6 +48,8 @@ Every task prompt must include:
 - deliverable and acceptance checks;
 - dependencies and ordering;
 - prohibited changes and approval boundaries;
+- allowed peer task IDs from the registry and the purpose of each coordination edge;
+- permission to convene bounded temporary-subagent meetings when enabled;
 - the structured handoff format from the coordination protocol.
 
 Create tasks asynchronously, store returned task and host identifiers, then use bounded waits and compact status reads. Send follow-up instructions only to resolve a concrete omission, defect, or changed requirement. Limit a repair to one focused retry and one re-check.
@@ -91,6 +93,12 @@ Before creating depth 4 or deeper, add a `depth_expansion` request to the approv
 Let each task select an installed skill when its description clearly matches the delegated work. The task must read and follow that skill before acting. Do not force a skill merely because it is available.
 
 Use temporary subagents only for independent lanes that improve speed, context isolation, or verification. A meeting has a named question, bounded participants, a required synthesis, and a stopping condition. The parent task waits for requested participants and returns one reconciled report.
+
+When `peer_coordination_enabled` is true, the Chief may add symmetric `coordination_with` edges between durable tasks whose verified `project_id` values match. Those tasks may message each other directly for a bounded dependency, interface, evidence request, or handoff. The sender includes the purpose, evidence, response needed, and deadline or stopping condition. The resulting decision or unresolved conflict is copied back to the Chief; routine peer sync does not open a human approval gate.
+
+Peer dialogue never transfers write ownership, broadens scope, approves reports, or authorizes protected actions. The Chief must decide any ownership or scope change before implementation. If direct thread messaging is unavailable in a task runtime, the task sends the same structured coordination request through the Chief as a relay.
+
+When `subagent_meetings_enabled` is true, any durable task may summon up to `max_meeting_participants` temporary subagents using the runtime's collaboration tools. Give each participant a distinct read-only lane by default, the meeting question, evidence, deliverable, and stopping condition. Temporary participants cannot create durable roles or delegate another management layer. The parent waits for every requested participant, resolves disagreement by evidence rather than majority vote, and sends one synthesis to its registered peers and the Chief. If the runtime lacks subagents, complete the work with the parent task and report the safe downgrade.
 
 ## Consolidate for the user
 
