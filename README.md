@@ -37,6 +37,7 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 - 汇报明确区分已验证事实、推断、待确认项、风险和下一步。
 - 删除、生产变更、发布、支付、外发消息和扩大权限前必须取得用户明确授权。
 - 使用项目文件保存协调状态，并为未来外置控制平面预留适配接口。
+- 可选启用一个跨项目、置顶的 Chief 待回复 TODO，并按个人策略定时提醒；关闭后完全不运行提醒。
 
 ### 环境要求
 
@@ -151,6 +152,12 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 每个长期岗位可以自行召开临时 subagent 会议，默认最多三名参与者。会议必须有一个明确问题、互不重叠的角色、输入证据、停止条件和综合负责人。参与者默认只读，不能继续创建长期岗位；如需实施，仍只有一个写入者。岗位负责人等待全部结果后按证据综合，再将简明结论发给相关岗位与 Chief。
 
+### 待回复 TODO 与提醒（可选）
+
+提醒是个人级、跨项目服务，不会让每个 Chief 重复创建一套自动化。开启后，Skill 创建或复用一个置顶的 `TODO｜待回复 Chief 汇总` 对话，只收集 Chief 明确等待你审批、确认、决策、补充信息或权限选择、且尚无后续用户回复的事项。仅仅打开或阅读对话不会被误判为已回复。
+
+默认策略采用北京时间 09:00–18:00 每小时一次（包含 09:00 和 18:00），并在 22:00 再提醒一次。个人策略文件位于 `~/.codex/chief-of-staff/reminders.json`，可以调整时区、日间窗口、间隔和额外时间。关闭时会暂停该策略登记的全部自动化，因此不会运行扫描，也不会发送通知；保留 TODO 对话和 ID 便于以后恢复。
+
 ### 汇报批复机制
 
 启用默认的 `report_approval_required` 后，子岗位的普通过程消息不会打断你，但里程碑汇报和最终交接必须带唯一汇报编号，并在 Codex 中请求人工处理。Chief 在任一子任务有结果时会立即检查全部活跃子任务，把所有新汇报去重写入 `approval-queue.json`，再在主任务中一次性列出待批复事项。
@@ -202,6 +209,7 @@ Each durable task can use installed Skills automatically and can summon temporar
 - Structured handoffs that separate verified facts, inference, open questions, risks, and next steps.
 - Explicit user approval before deletion, production changes, releases, payments, external messages, or permission expansion.
 - Persistent project state with a reserved adapter seam for a future external control plane.
+- An optional pinned, cross-project unanswered-Chief TODO with configurable reminders; disabling it stops all reminder runs.
 
 ### Requirements
 
@@ -316,6 +324,12 @@ The Chief creates symmetric `coordination_with` edges in `task-registry.json` fo
 
 Every durable role may convene a temporary subagent meeting with up to three participants by default. A meeting has one question, non-overlapping roles, evidence inputs, a stopping condition, and a synthesis owner. Participants are read-only by default and cannot create durable roles; if implementation is included, exactly one participant owns the write surface. The parent waits for all results, reconciles them by evidence, and sends one concise outcome to affected peers and the Chief.
 
+### Unanswered-Chief TODO and reminders (optional)
+
+Reminders are one personal, cross-project service rather than one automation per Chief. When enabled, the Skill creates or reuses a pinned `TODO｜待回复 Chief 汇总` thread. It includes only Chiefs that explicitly await approval, confirmation, a decision, more information, or a permission choice and have no later resolving user reply. Merely opening or reading a thread does not clear an item.
+
+The default policy runs every Beijing-time hour from 09:00 through 18:00 inclusive, plus 22:00. The personal policy lives at `~/.codex/chief-of-staff/reminders.json`; its timezone, daytime window, interval, and additional times are configurable. Disabling pauses every automation recorded by the policy, producing no scan runs or notifications while preserving the TODO thread and identifiers for later re-enablement.
+
 ### Report approval workflow
 
 With the default `report_approval_required` setting enabled, routine progress commentary does not interrupt you, but milestone reports and final handoffs carry a unique report ID and request human review in Codex. When any child produces a result, the Chief immediately snapshots every active child, deduplicates all new reports into `approval-queue.json`, and presents one approval batch in the main task.
@@ -346,4 +360,5 @@ Every unfinished-project report includes the final goal, current phase, verified
 - `scripts/init_project.py`: safe project initializer and validator / 安全的项目初始化与校验脚本。
 - `assets/project-template/`: generated project contract and agent profiles / 项目契约与角色配置模板。
 - `references/`: coordination protocol and persistent state schema / 协调协议与持久状态结构。
+- `assets/reminder-policy.example.json`: optional personal reminder policy example / 可选的个人提醒策略示例。
 - `agents/openai.yaml`: Codex UI metadata and implicit invocation policy / Codex 界面元数据与自动调用策略。

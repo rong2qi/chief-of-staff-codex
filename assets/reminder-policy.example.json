@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "timezone": "Asia/Shanghai",
+  "daytime_window": {
+    "start": "09:00",
+    "end": "18:00",
+    "interval_minutes": 60,
+    "include_start": true,
+    "include_end": true
+  },
+  "additional_times": [
+    "22:00"
+  ],
+  "todo_thread_title": "TODO｜待回复 Chief 汇总",
+  "todo_thread_id": null,
+  "automation_name": "Chief 待回复提醒",
+  "automation_ids": []
+}

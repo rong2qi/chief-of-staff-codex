@@ -1,6 +1,6 @@
 ---
 name: chief-of-staff
-description: Initialize and coordinate a Codex project through one accountable Chief of Staff task. Use when the user asks to initialize Chief of Staff, 统筹项目, 组建团队, delegate durable work to named tasks, collect reports, or manage a complex project through one main conversation. Do not use for a small single-task request that does not need coordination.
+description: Initialize and coordinate a Codex project through one accountable Chief of Staff task. Use when the user asks to initialize Chief of Staff, 统筹项目, 组建团队, delegate durable work to named tasks, collect reports, track unanswered Chief requests, configure reminders, or manage a complex project through one main conversation. Do not use for a small single-task request that does not need coordination.
 metadata:
   short-description: One accountable task for coordinated project work
 ---
@@ -99,6 +99,12 @@ When `peer_coordination_enabled` is true, the Chief may add symmetric `coordinat
 Peer dialogue never transfers write ownership, broadens scope, approves reports, or authorizes protected actions. The Chief must decide any ownership or scope change before implementation. If direct thread messaging is unavailable in a task runtime, the task sends the same structured coordination request through the Chief as a relay.
 
 When `subagent_meetings_enabled` is true, any durable task may summon up to `max_meeting_participants` temporary subagents using the runtime's collaboration tools. Give each participant a distinct read-only lane by default, the meeting question, evidence, deliverable, and stopping condition. Temporary participants cannot create durable roles or delegate another management layer. The parent waits for every requested participant, resolves disagreement by evidence rather than majority vote, and sends one synthesis to its registered peers and the Chief. If the runtime lacks subagents, complete the work with the parent task and report the safe downgrade.
+
+## Optional unanswered-Chief reminders
+
+Unanswered-Chief reminders are one personal, cross-project service rather than one automation per project. Configure them only when the user asks to enable, disable, or change reminders. Read [references/reminder-policy.md](references/reminder-policy.md), then maintain the personal policy file, one pinned TODO thread, and the minimum non-duplicated set of thread heartbeat automations.
+
+When disabled, pause every automation recorded by the policy so no scheduled run or notification occurs. When enabled, compile the user's timezone, inclusive daytime window, interval, and additional times into the exact schedule. Each run rebuilds a full snapshot and includes only unresolved explicit requests for approval, confirmation, decision, information, safety, or permissions. A user opening or reading a Chief does not clear an item; a later user reply that resolves, supersedes, or rejects the request does. The TODO task is read-only and never replies to a Chief or approves anything.
 
 ## Consolidate for the user
 
