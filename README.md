@@ -22,6 +22,7 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 
 - 每个项目拥有可区分的主任务名称：`Chief of <项目名>`。
 - 主任务在初始化完成后自动置顶。
+- 子岗位提交里程碑或最终汇报后进入待人工批复状态；Chief 会批量收集同时到达的汇报，避免遗漏。
 - 用户只与一个统一负责的主任务交互。
 - 长期任务统一命名为 `职务｜工作成果`。
 - 长期任务内部可以召开临时子代理会议。
@@ -67,7 +68,8 @@ cp -R chief-of-staff ~/.codex/skills/chief-of-staff
 {
   "project_name": "个人web",
   "primary_task_title": "Chief of 个人web",
-  "pin_primary_task": true
+  "pin_primary_task": true,
+  "report_approval_required": true
 }
 ```
 
@@ -87,6 +89,7 @@ AGENTS.md
 .chief-of-staff/
 ├── project.json
 ├── task-registry.json
+├── approval-queue.json
 ├── decisions.md
 ├── status.md
 └── control-plane.json
@@ -118,6 +121,14 @@ python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
 
 长期 Codex 任务拥有可见、独立且可以持续的上下文；临时 subagents 只完成边界明确的工作并向父任务汇报。主任务负责基于证据解决冲突并最终向用户汇报。
 
+### 汇报批复机制
+
+启用默认的 `report_approval_required` 后，子岗位的普通过程消息不会打断你，但里程碑汇报和最终交接必须带唯一汇报编号，并在 Codex 中请求人工处理。Chief 在任一子任务有结果时会立即检查全部活跃子任务，把所有新汇报去重写入 `approval-queue.json`，再在主任务中一次性列出待批复事项。
+
+你仍然只需要在 Chief 主任务中选择批准或退回修改。Chief 会把决定转发给对应子岗位；在收到你的明确决定之前，该岗位在登记中保持 `needs_attention`，也不会把沉默或无关消息视为默认批准。若运行环境不支持原生等待输入状态，子岗位使用 `REVIEW_REQUIRED` 标记，由 Chief 主任务发起人工审批作为降级方案。
+
+汇报批准只表示你已审阅并接受该次交接，不会自动授权删除、发布、生产变更、支付、外发消息或扩大权限；这些高影响操作仍需单独确认。
+
 ### 当前限制
 
 - 第一版只使用 Codex 原生能力，不修改 Codex 客户端界面。
@@ -140,6 +151,7 @@ Each durable task can use installed Skills automatically and can summon temporar
 
 - A distinguishable main task name for every project: `Chief of <project name>`.
 - Automatic pinning of the main task after initialization.
+- Human review gates for milestone and final reports, with batch collection so simultaneous updates are not missed.
 - One accountable main task for user communication.
 - Durable tasks named `Role｜Work outcome`.
 - Temporary subagent meetings inside durable tasks.
@@ -185,7 +197,8 @@ When no project name is supplied, the initializer uses the project root director
 {
   "project_name": "Personal Web",
   "primary_task_title": "Chief of Personal Web",
-  "pin_primary_task": true
+  "pin_primary_task": true,
+  "report_approval_required": true
 }
 ```
 
@@ -205,6 +218,7 @@ AGENTS.md
 .chief-of-staff/
 ├── project.json
 ├── task-registry.json
+├── approval-queue.json
 ├── decisions.md
 ├── status.md
 └── control-plane.json
@@ -235,6 +249,14 @@ User
 ```
 
 Durable Codex tasks retain visible, independent context. Temporary subagents handle bounded work and report to their parent task. The main task remains responsible for reconciling evidence and reporting to the user.
+
+### Report approval workflow
+
+With the default `report_approval_required` setting enabled, routine progress commentary does not interrupt you, but milestone reports and final handoffs carry a unique report ID and request human review in Codex. When any child produces a result, the Chief immediately snapshots every active child, deduplicates all new reports into `approval-queue.json`, and presents one approval batch in the main task.
+
+You still approve or request changes only in the Chief task. The Chief relays each decision to the matching child; until an explicit decision is received, its registry status remains `needs_attention`, and silence or an unrelated message never counts as approval. If the runtime cannot open a native blocking review request, the child emits a `REVIEW_REQUIRED` marker and the Chief opens the human-review request as a fallback.
+
+Report approval acknowledges that handoff only. It does not authorize deletion, release, production changes, payments, external messages, or permission expansion; those high-impact actions still require separate confirmation.
 
 ### Current limits
 

@@ -18,6 +18,7 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_ROOT = SKILL_ROOT / "assets" / "project-template"
 MUTABLE_STATE = {
     Path(".chief-of-staff/task-registry.json"),
+    Path(".chief-of-staff/approval-queue.json"),
     Path(".chief-of-staff/decisions.md"),
     Path(".chief-of-staff/status.md"),
     Path(".chief-of-staff/control-plane.json"),
@@ -84,7 +85,8 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             value,
             {
                 "schema_version", "project_name", "primary_task_title", "control_plane",
-                "pin_primary_task", "task_title_pattern", "approval_required",
+                "pin_primary_task", "report_approval_required", "task_title_pattern",
+                "approval_required",
             },
             relative,
             errors,
@@ -102,6 +104,11 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 )
         if "pin_primary_task" in value and not isinstance(value["pin_primary_task"], bool):
             errors.append(f"pin_primary_task in {relative} must be a boolean")
+        if (
+            "report_approval_required" in value
+            and not isinstance(value["report_approval_required"], bool)
+        ):
+            errors.append(f"report_approval_required in {relative} must be a boolean")
         approvals = value.get("approval_required")
         if not isinstance(approvals, list) or not all(isinstance(item, str) for item in approvals):
             errors.append(f"approval_required in {relative} must be an array of strings")
@@ -138,6 +145,45 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 if key in task and task[key] is not None and not isinstance(task[key], str):
                     errors.append(f"{key} in {label} must be a string or null")
 
+    elif relative.name == "approval-queue.json":
+        require_keys(value, {"schema_version", "requests"}, relative, errors)
+        requests = value.get("requests")
+        if not isinstance(requests, list):
+            errors.append(f"requests in {relative} must be an array")
+            return
+        required_request_keys = {
+            "request_id", "task_id", "host_id", "task_title", "report_type",
+            "submitted_at", "summary", "requested_decision", "status",
+            "decided_at", "decision_note",
+        }
+        report_types = {"progress", "final"}
+        review_statuses = {"pending", "approved", "changes_requested", "superseded"}
+        seen_request_ids: set[str] = set()
+        for index, request in enumerate(requests):
+            label = f"{relative} request[{index}]"
+            if not isinstance(request, dict):
+                errors.append(f"{label} must be an object")
+                continue
+            require_keys(request, required_request_keys, Path(label), errors)
+            for key in (
+                "request_id", "task_id", "task_title", "submitted_at", "summary",
+                "requested_decision",
+            ):
+                if key in request and not isinstance(request[key], str):
+                    errors.append(f"{key} in {label} must be a string")
+            request_id = request.get("request_id")
+            if isinstance(request_id, str):
+                if request_id in seen_request_ids:
+                    errors.append(f"duplicate request_id in {relative}: {request_id}")
+                seen_request_ids.add(request_id)
+            if request.get("report_type") not in report_types:
+                errors.append(f"report_type in {label} is invalid")
+            if request.get("status") not in review_statuses:
+                errors.append(f"status in {label} is invalid")
+            for key in ("host_id", "decided_at", "decision_note"):
+                if key in request and request[key] is not None and not isinstance(request[key], str):
+                    errors.append(f"{key} in {label} must be a string or null")
+
     elif relative.name == "control-plane.json":
         require_keys(
             value,
@@ -163,6 +209,7 @@ def validate(target: Path) -> list[str]:
     for relative in (
         Path(".chief-of-staff/project.json"),
         Path(".chief-of-staff/task-registry.json"),
+        Path(".chief-of-staff/approval-queue.json"),
         Path(".chief-of-staff/control-plane.json"),
     ):
         path = target / relative
@@ -229,24 +276,36 @@ def initialize(target: Path, project_name: str) -> int:
                     existing_project = json.loads(destination.read_text(encoding="utf-8"))
                     expected_project = json.loads(expected.decode("utf-8"))
                     previous_dynamic = dict(expected_project)
-                    previous_dynamic.pop("pin_primary_task", None)
-                    previous_legacy = dict(previous_dynamic)
+                    previous_dynamic.pop("report_approval_required", None)
+                    previous_before_pinning = dict(previous_dynamic)
+                    previous_before_pinning.pop("pin_primary_task", None)
+                    previous_legacy = dict(previous_before_pinning)
                     previous_legacy["primary_task_title"] = "Chief of Staff"
-                    if existing_project in (previous_dynamic, previous_legacy):
+                    if existing_project in (
+                        previous_dynamic, previous_before_pinning, previous_legacy
+                    ):
                         planned.append((destination, expected))
                         continue
                 except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                     pass
             if relative == Path("AGENTS.md"):
                 current_text = expected.decode("utf-8")
-                legacy_text = current_text.replace(
+                report_gate = """\n## Report approval gate\n\nWhen `.chief-of-staff/project.json` sets `report_approval_required` to `true`, every milestone report and final handoff includes a stable `<task_id>:<report_sequence>` ID and requests `批准` or `退回修改`. The child opens a blocking review request so Codex marks it as needing attention; if the host cannot do that, it ends with `REVIEW_REQUIRED: <request_id>`. The Chief snapshots all active children after any wake-up, records every unseen request in `approval-queue.json`, and batches pending reports for the user in the Chief task. Only the user's explicit decision relayed by the Chief clears the gate.\n"""
+                previous_text = current_text.replace(report_gate, "")
+                previous_text = previous_text.replace(
+                    "- `.chief-of-staff/approval-queue.json`: deduplicated human-review requests and decisions.\n",
+                    "",
+                )
+                legacy_text = previous_text.replace(
                     f"This project is coordinated through one primary Codex task named `Chief of {project_name}`.",
                     "This project is coordinated through one primary Codex task titled `Chief of Staff`.",
                 ).replace(
                     "- A task is the Chief of Staff only when its title matches the `primary_task_title` in `.chief-of-staff/project.json` or its initiating prompt explicitly assigns that role.",
                     "- A task is the Chief of Staff only when its title or initiating prompt explicitly assigns that role.",
                 )
-                if destination.read_bytes() == legacy_text.encode("utf-8"):
+                if destination.read_bytes() in {
+                    previous_text.encode("utf-8"), legacy_text.encode("utf-8")
+                }:
                     planned.append((destination, expected))
                     continue
             conflicts.append(relative)

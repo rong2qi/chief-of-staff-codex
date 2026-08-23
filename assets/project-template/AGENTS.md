@@ -49,10 +49,15 @@ Every delegated task ends with:
 
 Read-only tasks write `修改内容：无`. Writers list only their owned changes.
 
+## Report approval gate
+
+When `.chief-of-staff/project.json` sets `report_approval_required` to `true`, every milestone report and final handoff includes a stable `<task_id>:<report_sequence>` ID and requests `批准` or `退回修改`. The child opens a blocking review request so Codex marks it as needing attention; if the host cannot do that, it ends with `REVIEW_REQUIRED: <request_id>`. The Chief snapshots all active children after any wake-up, records every unseen request in `approval-queue.json`, and batches pending reports for the user in the Chief task. Only the user's explicit decision relayed by the Chief clears the gate.
+
 ## Persistent state
 
 - `.chief-of-staff/project.json`: project identity and authorization boundary.
 - `.chief-of-staff/task-registry.json`: durable task identifiers, ownership, dependencies, status, cursors, and result summaries.
+- `.chief-of-staff/approval-queue.json`: deduplicated human-review requests and decisions.
 - `.chief-of-staff/decisions.md`: append-only material decision log.
 - `.chief-of-staff/status.md`: current consolidated report for the user.
 - `.chief-of-staff/control-plane.json`: reserved adapter seam for a future external orchestrator.

@@ -48,6 +48,18 @@ Every task prompt must include:
 
 Create tasks asynchronously, store returned task and host identifiers, then use bounded waits and compact status reads. Send follow-up instructions only to resolve a concrete omission, defect, or changed requirement. Limit a repair to one focused retry and one re-check.
 
+When `report_approval_required` is `true`, include the report approval gate from the coordination protocol in every durable-task contract. A milestone report or final handoff remains unapproved until the user decides in the Chief task. After the first child becomes complete or needs attention, immediately snapshot every active child so simultaneous reports are collected rather than only the first wake-up.
+
+For each new report, the Chief must:
+
+1. Deduplicate it by `request_id` and append it to `.chief-of-staff/approval-queue.json` with `status: pending`.
+2. Set the task registry status to `needs_attention` and preserve its latest cursor and report summary.
+3. Present all pending reports to the user in one numbered approval batch in the Chief task, using the host's blocking user-input mechanism when available.
+4. After the user chooses approve or request changes, update the queue, relay the decision to the child task, and only then move its registry status to `running` or `completed`.
+
+Do not silently approve a report. If the child cannot open a native attention request, treat its `REVIEW_REQUIRED` handoff marker as the fallback signal and surface the approval request from the Chief task instead.
+Report approval acknowledges the handoff only. It never authorizes deletion, release, production changes, payments, external messages, permission expansion, or another separately protected action.
+
 ## Use skills and temporary subagents
 
 Let each task select an installed skill when its description clearly matches the delegated work. The task must read and follow that skill before acting. Do not force a skill merely because it is available.

@@ -3,6 +3,7 @@
   "project_name": "{{PROJECT_NAME_JSON}}",
   "primary_task_title": "Chief of {{PROJECT_NAME_JSON}}",
   "pin_primary_task": true,
+  "report_approval_required": true,
   "control_plane": "native",
   "task_title_pattern": "职务｜工作内容",
   "approval_required": [
