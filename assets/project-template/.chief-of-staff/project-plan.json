@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "goal_status": "unconfirmed",
+  "project_status": "awaiting_goal",
+  "final_goal": "",
+  "deliverables": [],
+  "acceptance_criteria": [],
+  "non_goals": [],
+  "constraints": [],
+  "confirmed_at": null,
+  "current_phase_id": null,
+  "phases": []
+}

@@ -18,7 +18,8 @@ When the user says “初始化 Chief of Staff”, “启用 Chief of Staff”, 
 3. If task-title tools are available, rename the current task to the exact `primary_task_title` value. Do not claim the rename succeeded unless the tool confirms it.
 4. When `pin_primary_task` is `true`, resolve the current task ID and pin that task after the rename. Prefer a runtime-provided current task ID; otherwise list tasks and require one exact `primary_task_title` match in the current project context. Never pin an ambiguous match, and do not claim success unless the pin tool confirms it. If task pinning is unavailable, report that limitation while leaving project initialization intact.
 5. Read the generated `AGENTS.md` and treat it with `project.json` as the project operating contract.
-6. Record active durable tasks in `.chief-of-staff/task-registry.json`; record meaningful decisions in `.chief-of-staff/decisions.md`; maintain the consolidated user report in `.chief-of-staff/status.md`.
+6. Read `.chief-of-staff/project-plan.json`. When `require_goal_confirmation` is `true` and `goal_status` is `unconfirmed`, infer a concise draft from available context and ask the user to confirm or revise the final goal, deliverables, acceptance criteria, non-goals, and constraints. Record a `goal_confirmation` request in `approval-queue.json`. A new project permits only bounded read-only discovery before confirmation. In a migrated project, already-running non-high-impact tasks may finish, but do not dispatch a new task or phase until the goal is confirmed.
+7. After explicit confirmation, set `goal_status` to `confirmed` and `project_status` to `active`, record the confirmed values and time, define the first phase, and start at least one phase task. Record active durable tasks in `.chief-of-staff/task-registry.json`; record meaningful decisions in `.chief-of-staff/decisions.md`; maintain the consolidated user report in `.chief-of-staff/status.md`.
 
 Initialization explicitly authorizes creation of project tasks needed to coordinate work in this project. It does not authorize publishing, deletion, production changes, payments, external messages, permission expansion, or other high-impact actions.
 
@@ -28,6 +29,7 @@ Initialization explicitly authorizes creation of project tasks needed to coordin
 - Create a durable Codex task when work needs its own long-lived context, role, status, or user-visible history. Title it `职务｜工作内容`.
 - Use temporary subagents inside a task for bounded research, discussion, testing, or independent review. Temporary agents report to their parent task and do not become a second user-facing control plane.
 - Do not create duplicate investigations or parallel writers for the same files, external record, branch, deployment target, or deliverable.
+- An unconfirmed final goal permits only goal-clarifying read-only discovery, not implementation.
 
 Read [references/coordination-protocol.md](references/coordination-protocol.md) before creating durable tasks or resolving conflicting reports. Read [references/state-schema.md](references/state-schema.md) before updating project state files programmatically.
 
@@ -59,6 +61,26 @@ For each new report, the Chief must:
 
 Do not silently approve a report. If the child cannot open a native attention request, treat its `REVIEW_REQUIRED` handoff marker as the fallback signal and surface the approval request from the Chief task instead.
 Report approval acknowledges the handoff only. It never authorizes deletion, release, production changes, payments, external messages, permission expansion, or another separately protected action.
+
+## Maintain goal closure and active progress
+
+Treat a phase completion as evidence, not project completion. The project is `completed` only when the final goal is confirmed and every acceptance criterion is `verified` with non-empty evidence in `project-plan.json`.
+
+Until then, maintain at least one of these conditions:
+
+- a phase task is `queued`, `running`, or `needs_attention`;
+- `project_status` is `awaiting_user` with an exact decision request;
+- `project_status` is `blocked` with verified evidence, attempted remedies, an owner, and a release condition.
+
+If all phase tasks stop or complete while final acceptance remains unmet, immediately define and dispatch the next phase. `auto_advance_low_impact: true` authorizes this for safe in-scope work; it does not expand any protected approval boundary. Follow active tasks with bounded waits. After any task completes, fails, or needs attention, take one immediate snapshot of every active task, reconcile all results, update state, and either dispatch the next work or ask the user for the precise decision required.
+
+Never answer only “当前无待审批事项” for an unfinished project. A concise Chief report must still include the confirmed final goal, current phase, verified progress, active roles, gap to final delivery, and next checkpoint.
+
+## Enforce the management hierarchy
+
+Use management depth `1` for the Chief, `2` for phase leads, and `3` for execution roles. A phase lead may create and manage depth-3 durable tasks when its contract explicitly grants that authority. Temporary subagents at depth 3 are bounded helpers, do not count as another durable management layer, and cannot create durable tasks.
+
+Before creating depth 4 or deeper, add a `depth_expansion` request to the approval queue and ask the user. Include the proposed depth, phase, roles, reason, duration, and impact of refusing. Do not create the deeper task before explicit approval. The Chief remains the sole writer of `project-plan.json`, `task-registry.json`, `approval-queue.json`, and the consolidated status even when a phase lead creates child tasks.
 
 ## Use skills and temporary subagents
 

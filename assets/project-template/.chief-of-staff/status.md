@@ -1,5 +1,13 @@
 # Chief of {{PROJECT_NAME}} status
 
+## 最终目标
+
+- Awaiting user confirmation.
+
+## 当前阶段
+
+- Goal confirmation.
+
 ## 已验证事实
 
 - Project coordination initialized.
@@ -16,10 +24,22 @@
 
 - None.
 
+## 正在工作的岗位
+
+- None until the final goal is confirmed.
+
+## 距最终交付的差距
+
+- Final goal, deliverables, and acceptance criteria are not yet confirmed.
+
 ## 风险
 
 - None recorded.
 
 ## 下一步
 
-- Await the user's first project objective.
+- Ask the user to confirm the final goal, deliverables, acceptance criteria, non-goals, and constraints.
+
+## 下一检查点
+
+- User goal confirmation.

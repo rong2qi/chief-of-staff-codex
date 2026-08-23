@@ -4,6 +4,10 @@
   "primary_task_title": "Chief of {{PROJECT_NAME_JSON}}",
   "pin_primary_task": true,
   "report_approval_required": true,
+  "require_goal_confirmation": true,
+  "max_management_depth": 3,
+  "auto_advance_low_impact": true,
+  "proactive_follow_up": true,
   "control_plane": "native",
   "task_title_pattern": "职务｜工作内容",
   "approval_required": [

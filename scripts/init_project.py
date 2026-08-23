@@ -17,6 +17,7 @@ except ModuleNotFoundError:  # Python 3.10 and earlier
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_ROOT = SKILL_ROOT / "assets" / "project-template"
 MUTABLE_STATE = {
+    Path(".chief-of-staff/project-plan.json"),
     Path(".chief-of-staff/task-registry.json"),
     Path(".chief-of-staff/approval-queue.json"),
     Path(".chief-of-staff/decisions.md"),
@@ -72,6 +73,41 @@ def require_keys(value: dict, keys: set[str], relative: Path, errors: list[str])
         errors.append(f"missing keys in {relative}: {', '.join(missing)}")
 
 
+def migrate_mutable_state(relative: Path, value: object) -> tuple[object, bool]:
+    """Add backward-compatible fields without changing existing state values."""
+    if not isinstance(value, dict):
+        return value, False
+
+    changed = False
+    if relative.name == "task-registry.json" and isinstance(value.get("tasks"), list):
+        for task in value["tasks"]:
+            if not isinstance(task, dict):
+                continue
+            defaults = {
+                "parent_task_id": None,
+                "phase_id": None,
+                "management_depth": 2,
+            }
+            for key, default in defaults.items():
+                if key not in task:
+                    task[key] = default
+                    changed = True
+
+    if relative.name == "approval-queue.json" and isinstance(value.get("requests"), list):
+        for request in value["requests"]:
+            if not isinstance(request, dict):
+                continue
+            if "request_kind" not in request:
+                request["request_kind"] = "report_review"
+                changed = True
+
+    return value, changed
+
+
+def encoded_json(value: object) -> bytes:
+    return (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
 def validate_state(relative: Path, value: object, errors: list[str]) -> None:
     if not isinstance(value, dict):
         errors.append(f"top-level JSON value in {relative} must be an object")
@@ -86,7 +122,8 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             {
                 "schema_version", "project_name", "primary_task_title", "control_plane",
                 "pin_primary_task", "report_approval_required", "task_title_pattern",
-                "approval_required",
+                "require_goal_confirmation", "max_management_depth",
+                "auto_advance_low_impact", "proactive_follow_up", "approval_required",
             },
             relative,
             errors,
@@ -102,16 +139,166 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 errors.append(
                     f"primary_task_title in {relative} must be {expected_title!r}"
                 )
-        if "pin_primary_task" in value and not isinstance(value["pin_primary_task"], bool):
-            errors.append(f"pin_primary_task in {relative} must be a boolean")
-        if (
-            "report_approval_required" in value
-            and not isinstance(value["report_approval_required"], bool)
+        for key in (
+            "pin_primary_task", "report_approval_required", "require_goal_confirmation",
+            "auto_advance_low_impact", "proactive_follow_up",
         ):
-            errors.append(f"report_approval_required in {relative} must be a boolean")
+            if key in value and not isinstance(value[key], bool):
+                errors.append(f"{key} in {relative} must be a boolean")
+        max_depth = value.get("max_management_depth")
+        if not isinstance(max_depth, int) or isinstance(max_depth, bool) or max_depth < 1:
+            errors.append(f"max_management_depth in {relative} must be a positive integer")
         approvals = value.get("approval_required")
         if not isinstance(approvals, list) or not all(isinstance(item, str) for item in approvals):
             errors.append(f"approval_required in {relative} must be an array of strings")
+
+    elif relative.name == "project-plan.json":
+        require_keys(
+            value,
+            {
+                "schema_version", "goal_status", "project_status", "final_goal",
+                "deliverables", "acceptance_criteria", "non_goals", "constraints",
+                "confirmed_at", "current_phase_id", "phases",
+            },
+            relative,
+            errors,
+        )
+        if value.get("goal_status") not in {"unconfirmed", "confirmed"}:
+            errors.append(f"goal_status in {relative} is invalid")
+        project_statuses = {
+            "awaiting_goal", "active", "awaiting_user", "blocked", "completed"
+        }
+        if value.get("project_status") not in project_statuses:
+            errors.append(f"project_status in {relative} is invalid")
+        if "final_goal" in value and not isinstance(value["final_goal"], str):
+            errors.append(f"final_goal in {relative} must be a string")
+        for key in ("deliverables", "non_goals", "constraints"):
+            if key in value and (
+                not isinstance(value[key], list)
+                or not all(isinstance(item, str) for item in value[key])
+            ):
+                errors.append(f"{key} in {relative} must be an array of strings")
+        for key in ("confirmed_at", "current_phase_id"):
+            if key in value and value[key] is not None and not isinstance(value[key], str):
+                errors.append(f"{key} in {relative} must be a string or null")
+
+        criteria = value.get("acceptance_criteria")
+        if not isinstance(criteria, list):
+            errors.append(f"acceptance_criteria in {relative} must be an array")
+        else:
+            criterion_statuses = {"pending", "verified", "failed"}
+            seen_criterion_ids: set[str] = set()
+            for index, criterion in enumerate(criteria):
+                label = f"{relative} acceptance_criteria[{index}]"
+                if not isinstance(criterion, dict):
+                    errors.append(f"{label} must be an object")
+                    continue
+                require_keys(
+                    criterion,
+                    {"criterion_id", "description", "status", "evidence"},
+                    Path(label),
+                    errors,
+                )
+                for key in ("criterion_id", "description"):
+                    if key in criterion and not isinstance(criterion[key], str):
+                        errors.append(f"{key} in {label} must be a string")
+                criterion_id = criterion.get("criterion_id")
+                if isinstance(criterion_id, str):
+                    if criterion_id in seen_criterion_ids:
+                        errors.append(
+                            f"duplicate criterion_id in {relative}: {criterion_id}"
+                        )
+                    seen_criterion_ids.add(criterion_id)
+                if criterion.get("status") not in criterion_statuses:
+                    errors.append(f"status in {label} is invalid")
+                evidence = criterion.get("evidence")
+                if not isinstance(evidence, list) or not all(
+                    isinstance(item, str) for item in evidence
+                ):
+                    errors.append(f"evidence in {label} must be an array of strings")
+
+        phases = value.get("phases")
+        if not isinstance(phases, list):
+            errors.append(f"phases in {relative} must be an array")
+        else:
+            phase_statuses = {"planned", "active", "awaiting_user", "blocked", "completed"}
+            seen_phase_ids: set[str] = set()
+            for index, phase in enumerate(phases):
+                label = f"{relative} phases[{index}]"
+                if not isinstance(phase, dict):
+                    errors.append(f"{label} must be an object")
+                    continue
+                require_keys(
+                    phase,
+                    {
+                        "phase_id", "title", "objective", "status",
+                        "acceptance_criteria", "task_ids", "result_summary",
+                    },
+                    Path(label),
+                    errors,
+                )
+                for key in ("phase_id", "title", "objective"):
+                    if key in phase and not isinstance(phase[key], str):
+                        errors.append(f"{key} in {label} must be a string")
+                phase_id = phase.get("phase_id")
+                if isinstance(phase_id, str):
+                    if phase_id in seen_phase_ids:
+                        errors.append(f"duplicate phase_id in {relative}: {phase_id}")
+                    seen_phase_ids.add(phase_id)
+                if phase.get("status") not in phase_statuses:
+                    errors.append(f"status in {label} is invalid")
+                for key in ("acceptance_criteria", "task_ids"):
+                    if key in phase and (
+                        not isinstance(phase[key], list)
+                        or not all(isinstance(item, str) for item in phase[key])
+                    ):
+                        errors.append(f"{key} in {label} must be an array of strings")
+                result_summary = phase.get("result_summary")
+                if result_summary is not None and not isinstance(result_summary, str):
+                    errors.append(f"result_summary in {label} must be a string or null")
+
+        if value.get("goal_status") == "unconfirmed":
+            if value.get("project_status") != "awaiting_goal":
+                errors.append(
+                    f"unconfirmed goal in {relative} requires project_status awaiting_goal"
+                )
+        if value.get("goal_status") == "confirmed":
+            if value.get("project_status") == "awaiting_goal":
+                errors.append(
+                    f"confirmed goal in {relative} cannot remain awaiting_goal"
+                )
+            if not value.get("final_goal"):
+                errors.append(f"confirmed goal in {relative} requires final_goal")
+            if not isinstance(value.get("deliverables"), list) or not value["deliverables"]:
+                errors.append(f"confirmed goal in {relative} requires deliverables")
+            if not isinstance(criteria, list) or not criteria:
+                errors.append(f"confirmed goal in {relative} requires acceptance_criteria")
+            if not isinstance(value.get("confirmed_at"), str) or not value["confirmed_at"]:
+                errors.append(f"confirmed goal in {relative} requires confirmed_at")
+        if value.get("project_status") == "active":
+            current_phase_id = value.get("current_phase_id")
+            if not isinstance(current_phase_id, str) or not current_phase_id:
+                errors.append(f"active project in {relative} requires current_phase_id")
+            elif not isinstance(phases, list) or not any(
+                isinstance(phase, dict)
+                and phase.get("phase_id") == current_phase_id
+                and phase.get("status") == "active"
+                for phase in phases
+            ):
+                errors.append(
+                    f"active project in {relative} requires a matching active phase"
+                )
+        if value.get("project_status") == "completed":
+            if value.get("goal_status") != "confirmed":
+                errors.append(f"completed project in {relative} requires a confirmed goal")
+            if not isinstance(criteria, list) or not criteria or any(
+                not isinstance(item, dict) or item.get("status") != "verified"
+                or not item.get("evidence")
+                for item in criteria
+            ):
+                errors.append(
+                    f"completed project in {relative} requires verified acceptance evidence"
+                )
 
     elif relative.name == "task-registry.json":
         require_keys(value, {"schema_version", "tasks"}, relative, errors)
@@ -122,6 +309,7 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
         required_task_keys = {
             "task_id", "host_id", "title", "role", "objective", "status",
             "write_surface", "depends_on", "last_cursor", "result_summary",
+            "parent_task_id", "phase_id", "management_depth",
         }
         statuses = {"queued", "running", "needs_attention", "completed", "failed", "archived"}
         for index, task in enumerate(tasks):
@@ -141,9 +329,18 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                     or not all(isinstance(item, str) for item in task[key])
                 ):
                     errors.append(f"{key} in {label} must be an array of strings")
-            for key in ("host_id", "last_cursor", "result_summary"):
+            for key in (
+                "host_id", "last_cursor", "result_summary", "parent_task_id", "phase_id"
+            ):
                 if key in task and task[key] is not None and not isinstance(task[key], str):
                     errors.append(f"{key} in {label} must be a string or null")
+            management_depth = task.get("management_depth")
+            if (
+                not isinstance(management_depth, int)
+                or isinstance(management_depth, bool)
+                or management_depth < 1
+            ):
+                errors.append(f"management_depth in {label} must be a positive integer")
 
     elif relative.name == "approval-queue.json":
         require_keys(value, {"schema_version", "requests"}, relative, errors)
@@ -152,10 +349,11 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             errors.append(f"requests in {relative} must be an array")
             return
         required_request_keys = {
-            "request_id", "task_id", "host_id", "task_title", "report_type",
+            "request_id", "request_kind", "task_id", "host_id", "task_title", "report_type",
             "submitted_at", "summary", "requested_decision", "status",
             "decided_at", "decision_note",
         }
+        request_kinds = {"goal_confirmation", "report_review", "depth_expansion"}
         report_types = {"progress", "final"}
         review_statuses = {"pending", "approved", "changes_requested", "superseded"}
         seen_request_ids: set[str] = set()
@@ -166,8 +364,7 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 continue
             require_keys(request, required_request_keys, Path(label), errors)
             for key in (
-                "request_id", "task_id", "task_title", "submitted_at", "summary",
-                "requested_decision",
+                "request_id", "request_kind", "submitted_at", "summary", "requested_decision",
             ):
                 if key in request and not isinstance(request[key], str):
                     errors.append(f"{key} in {label} must be a string")
@@ -176,11 +373,20 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 if request_id in seen_request_ids:
                     errors.append(f"duplicate request_id in {relative}: {request_id}")
                 seen_request_ids.add(request_id)
-            if request.get("report_type") not in report_types:
-                errors.append(f"report_type in {label} is invalid")
+            request_kind = request.get("request_kind")
+            if request_kind not in request_kinds:
+                errors.append(f"request_kind in {label} is invalid")
+            report_type = request.get("report_type")
+            if request_kind == "report_review" and report_type not in report_types:
+                errors.append(f"report_type in {label} is invalid for report_review")
+            if request_kind != "report_review" and report_type is not None:
+                errors.append(f"report_type in {label} must be null for {request_kind}")
             if request.get("status") not in review_statuses:
                 errors.append(f"status in {label} is invalid")
-            for key in ("host_id", "decided_at", "decision_note"):
+            for key in (
+                "task_id", "host_id", "task_title", "report_type", "decided_at",
+                "decision_note",
+            ):
                 if key in request and request[key] is not None and not isinstance(request[key], str):
                     errors.append(f"{key} in {label} must be a string or null")
 
@@ -208,6 +414,7 @@ def validate(target: Path) -> list[str]:
 
     for relative in (
         Path(".chief-of-staff/project.json"),
+        Path(".chief-of-staff/project-plan.json"),
         Path(".chief-of-staff/task-registry.json"),
         Path(".chief-of-staff/approval-queue.json"),
         Path(".chief-of-staff/control-plane.json"),
@@ -219,6 +426,29 @@ def validate(target: Path) -> list[str]:
                 validate_state(relative, value, errors)
             except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 errors.append(f"invalid JSON in {relative}: {exc}")
+
+    plan_path = target / ".chief-of-staff" / "project-plan.json"
+    registry_path = target / ".chief-of-staff" / "task-registry.json"
+    if plan_path.is_file() and registry_path.is_file():
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            if isinstance(plan, dict) and plan.get("project_status") == "active":
+                current_phase_id = plan.get("current_phase_id")
+                tasks = registry.get("tasks") if isinstance(registry, dict) else None
+                active_statuses = {"queued", "running", "needs_attention"}
+                if not isinstance(tasks, list) or not any(
+                    isinstance(task, dict)
+                    and task.get("phase_id") == current_phase_id
+                    and task.get("status") in active_statuses
+                    for task in tasks
+                ):
+                    errors.append(
+                        "active project requires a queued, running, or needs_attention "
+                        "task in the current phase"
+                    )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            pass
 
     toml_files = [target / ".codex" / "config.toml"]
     toml_files.extend(sorted((target / ".codex" / "agents").glob("*.toml")))
@@ -261,10 +491,13 @@ def initialize(target: Path, project_name: str) -> int:
                 if relative.suffix == ".json":
                     try:
                         value = json.loads(destination.read_text(encoding="utf-8"))
+                        value, changed = migrate_mutable_state(relative, value)
                         state_errors: list[str] = []
                         validate_state(relative, value, state_errors)
                         if state_errors:
                             raise ValueError("; ".join(state_errors))
+                        if changed:
+                            planned.append((destination, encoded_json(value)))
                     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
                         conflicts.append(relative)
                         continue
@@ -276,13 +509,20 @@ def initialize(target: Path, project_name: str) -> int:
                     existing_project = json.loads(destination.read_text(encoding="utf-8"))
                     expected_project = json.loads(expected.decode("utf-8"))
                     previous_dynamic = dict(expected_project)
-                    previous_dynamic.pop("report_approval_required", None)
-                    previous_before_pinning = dict(previous_dynamic)
+                    for key in (
+                        "require_goal_confirmation", "max_management_depth",
+                        "auto_advance_low_impact", "proactive_follow_up",
+                    ):
+                        previous_dynamic.pop(key, None)
+                    previous_before_report_approval = dict(previous_dynamic)
+                    previous_before_report_approval.pop("report_approval_required", None)
+                    previous_before_pinning = dict(previous_before_report_approval)
                     previous_before_pinning.pop("pin_primary_task", None)
                     previous_legacy = dict(previous_before_pinning)
                     previous_legacy["primary_task_title"] = "Chief of Staff"
                     if existing_project in (
-                        previous_dynamic, previous_before_pinning, previous_legacy
+                        previous_dynamic, previous_before_report_approval,
+                        previous_before_pinning, previous_legacy,
                     ):
                         planned.append((destination, expected))
                         continue
@@ -290,8 +530,14 @@ def initialize(target: Path, project_name: str) -> int:
                     pass
             if relative == Path("AGENTS.md"):
                 current_text = expected.decode("utf-8")
+                goal_closure = """\n## Goal closure and active progression\n\n- Before implementation, the Chief proposes and asks the user to confirm the final goal, deliverables, acceptance criteria, non-goals, and constraints. A new project permits only bounded read-only discovery before confirmation. In a migrated project, already-running non-high-impact tasks may finish, but no new task or phase starts before confirmation.\n- A phase completion is not project completion. The project is complete only when the goal is confirmed and every final acceptance criterion has non-empty verification evidence in `project-plan.json`.\n- Until completion, keep a phase task queued, running, or needing attention unless the project is explicitly waiting for the user or blocked with evidence and a release condition. If all phase tasks stop while final acceptance is unmet, immediately dispatch the next safe in-scope phase.\n- Follow all active tasks with bounded waits. After any completion, failure, or attention event, snapshot every active task before deciding what comes next.\n- A Chief report for an unfinished project always includes the final goal, current phase, verified progress, active roles, gap to delivery, and next checkpoint, even when no approval is pending.\n- Management depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role. Phase leads may create depth-3 tasks only when explicitly authorized in their contract. Temporary subagents cannot create durable roles. Depth 4 or deeper requires an approved `depth_expansion` request.\n- The Chief is the sole writer of `project-plan.json`, `task-registry.json`, `approval-queue.json`, and consolidated status. Low-impact in-scope phases advance automatically; protected actions retain their separate approval requirements.\n"""
                 report_gate = """\n## Report approval gate\n\nWhen `.chief-of-staff/project.json` sets `report_approval_required` to `true`, every milestone report and final handoff includes a stable `<task_id>:<report_sequence>` ID and requests `批准` or `退回修改`. The child opens a blocking review request so Codex marks it as needing attention; if the host cannot do that, it ends with `REVIEW_REQUIRED: <request_id>`. The Chief snapshots all active children after any wake-up, records every unseen request in `approval-queue.json`, and batches pending reports for the user in the Chief task. Only the user's explicit decision relayed by the Chief clears the gate.\n"""
-                previous_text = current_text.replace(report_gate, "")
+                previous_current = current_text.replace(goal_closure, "")
+                previous_current = previous_current.replace(
+                    "- `.chief-of-staff/project-plan.json`: confirmed final goal, acceptance evidence, project status, and phase plan.\n",
+                    "",
+                )
+                previous_text = previous_current.replace(report_gate, "")
                 previous_text = previous_text.replace(
                     "- `.chief-of-staff/approval-queue.json`: deduplicated human-review requests and decisions.\n",
                     "",
@@ -304,7 +550,8 @@ def initialize(target: Path, project_name: str) -> int:
                     "- A task is the Chief of Staff only when its title or initiating prompt explicitly assigns that role.",
                 )
                 if destination.read_bytes() in {
-                    previous_text.encode("utf-8"), legacy_text.encode("utf-8")
+                    previous_current.encode("utf-8"), previous_text.encode("utf-8"),
+                    legacy_text.encode("utf-8"),
                 }:
                     planned.append((destination, expected))
                     continue

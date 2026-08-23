@@ -18,6 +18,16 @@ Before delegation or implementation, record the goal, evidence, scope, non-scope
 - For high risk, use read-only arbitration, one implementation writer, and independent read-only review.
 - Use at most three active stages, two decision rounds, and one repair/re-check cycle.
 
+## Goal closure and active progression
+
+- Before implementation, the Chief proposes and asks the user to confirm the final goal, deliverables, acceptance criteria, non-goals, and constraints. A new project permits only bounded read-only discovery before confirmation. In a migrated project, already-running non-high-impact tasks may finish, but no new task or phase starts before confirmation.
+- A phase completion is not project completion. The project is complete only when the goal is confirmed and every final acceptance criterion has non-empty verification evidence in `project-plan.json`.
+- Until completion, keep a phase task queued, running, or needing attention unless the project is explicitly waiting for the user or blocked with evidence and a release condition. If all phase tasks stop while final acceptance is unmet, immediately dispatch the next safe in-scope phase.
+- Follow all active tasks with bounded waits. After any completion, failure, or attention event, snapshot every active task before deciding what comes next.
+- A Chief report for an unfinished project always includes the final goal, current phase, verified progress, active roles, gap to delivery, and next checkpoint, even when no approval is pending.
+- Management depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role. Phase leads may create depth-3 tasks only when explicitly authorized in their contract. Temporary subagents cannot create durable roles. Depth 4 or deeper requires an approved `depth_expansion` request.
+- The Chief is the sole writer of `project-plan.json`, `task-registry.json`, `approval-queue.json`, and consolidated status. Low-impact in-scope phases advance automatically; protected actions retain their separate approval requirements.
+
 ## Write ownership
 
 - A file, external record, branch, deployment target, or deliverable has at most one writer at a time.
@@ -56,6 +66,7 @@ When `.chief-of-staff/project.json` sets `report_approval_required` to `true`, e
 ## Persistent state
 
 - `.chief-of-staff/project.json`: project identity and authorization boundary.
+- `.chief-of-staff/project-plan.json`: confirmed final goal, acceptance evidence, project status, and phase plan.
 - `.chief-of-staff/task-registry.json`: durable task identifiers, ownership, dependencies, status, cursors, and result summaries.
 - `.chief-of-staff/approval-queue.json`: deduplicated human-review requests and decisions.
 - `.chief-of-staff/decisions.md`: append-only material decision log.

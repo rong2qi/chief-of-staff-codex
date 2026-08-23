@@ -9,6 +9,9 @@ Send each role one decision-complete contract:
 ```markdown
 Role: <job title>
 Why needed: <coordination value>
+Parent task: <task id or Chief>
+Phase: <phase id and objective>
+Management depth: 2 | 3
 Goal: <observable outcome>
 Evidence: <verified inputs and locations>
 Scope: <included work>
@@ -31,15 +34,27 @@ Approval boundary: <actions requiring the user>
 
 Use Luna for read-only exploration and routine verification, Terra for the sole implementation writer, and Sol for high-risk arbitration or review. Runtime availability and the user's explicit model choice override this default.
 
+## Goal confirmation and completion
+
+Before implementation, the Chief proposes and asks the user to confirm the final goal, deliverables, acceptance criteria, non-goals, and constraints. Store the request as `goal_confirmation` and keep `project_status: awaiting_goal`. A new project permits only read-only discovery that materially helps clarify the goal. During migration, already-running non-high-impact tasks may finish, but no new task or phase starts before confirmation.
+
+After confirmation, create an ordered phase plan and start at least one current-phase task. Completing a phase never completes the project by itself. Set `project_status: completed` only when every final acceptance criterion is `verified` and has non-empty evidence.
+
+While the project is unfinished, keep an active or queued phase task unless the project is explicitly `awaiting_user` or verifiably `blocked`. If every task stops before final acceptance, dispatch the next safe in-scope phase immediately.
+
 ## Durable task naming and state
 
 Title every durable child task `职务｜工作内容`. Keep the role short and make the work content outcome-oriented, for example `技术负责人｜支付架构决策`.
 
 Add a registry entry as soon as creation succeeds. Update it when status, ownership, result, blocker, or task cursor changes. Task status is one of `queued`, `running`, `needs_attention`, `completed`, `failed`, or `archived`.
 
+Depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role. A phase lead may create depth-3 durable tasks only when its delegated contract explicitly authorizes task creation. Temporary subagents at depth 3 are bounded helpers and cannot create durable roles. Depth 4 or deeper requires a pending `depth_expansion` request and explicit user approval before creation. The Chief remains the sole writer of central project state.
+
+For every active phase, monitor all known task IDs with bounded waits. When one task completes, fails, or needs attention, immediately snapshot all active task IDs, then update the registry and phase plan from the complete result set. This prevents the first event from hiding simultaneous progress and ensures an idle phase is either advanced, blocked with evidence, or escalated with an exact decision.
+
 ## Report approval gate
 
-When `.chief-of-staff/project.json` sets `report_approval_required` to `true`, every milestone report and final handoff requires human review through the Chief task. Routine commentary does not open a gate.
+The approval queue supports `goal_confirmation`, `report_review`, and `depth_expansion`. When `.chief-of-staff/project.json` sets `report_approval_required` to `true`, every milestone report and final handoff requires human review through the Chief task. Routine commentary does not open a gate.
 
 The child task must:
 

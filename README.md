@@ -23,6 +23,8 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 - 每个项目拥有可区分的主任务名称：`Chief of <项目名>`。
 - 主任务在初始化完成后自动置顶。
 - 子岗位提交里程碑或最终汇报后进入待人工批复状态；Chief 会批量收集同时到达的汇报，避免遗漏。
+- Chief 必须先与你确认最终目标、交付物和验收标准；未达成最终验收前持续分阶段推进。
+- 默认三层管理结构，阶段负责人可以管理执行岗位；增加第四层前必须申请。
 - 用户只与一个统一负责的主任务交互。
 - 长期任务统一命名为 `职务｜工作成果`。
 - 长期任务内部可以召开临时子代理会议。
@@ -69,7 +71,11 @@ cp -R chief-of-staff ~/.codex/skills/chief-of-staff
   "project_name": "个人web",
   "primary_task_title": "Chief of 个人web",
   "pin_primary_task": true,
-  "report_approval_required": true
+  "report_approval_required": true,
+  "require_goal_confirmation": true,
+  "max_management_depth": 3,
+  "auto_advance_low_impact": true,
+  "proactive_follow_up": true
 }
 ```
 
@@ -88,6 +94,7 @@ AGENTS.md
     └── arbiter.toml
 .chief-of-staff/
 ├── project.json
+├── project-plan.json
 ├── task-registry.json
 ├── approval-queue.json
 ├── decisions.md
@@ -129,6 +136,16 @@ python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
 
 汇报批准只表示你已审阅并接受该次交接，不会自动授权删除、发布、生产变更、支付、外发消息或扩大权限；这些高影响操作仍需单独确认。
 
+### 目标闭环与主动推进
+
+初始化后，Chief 会先根据项目上下文提出最终目标、交付物、验收标准、非目标和约束，请你确认或修改。新项目在你明确确认前只允许为澄清目标进行有限的只读侦察。旧项目迁移时允许已经开始的非高影响任务完成，但不会派发新任务或进入新阶段。确认结果和逐项验收证据保存在 `project-plan.json`。
+
+目标确认后，Chief 将工作拆为阶段，并确保未完成项目始终满足以下之一：有岗位正在排队、工作或等待处理；正在等待你的具体决定；或者存在有证据且有解除条件的阻塞。如果本阶段岗位全部结束但最终验收仍未满足，Chief 会自动创建并推进下一阶段，而不是只回答“当前无待审批事项”。
+
+默认层级为 `Chief → 阶段负责人 → 执行岗位/临时 subagents`。阶段负责人可以在授权范围内创建执行岗位；临时 subagents 不能继续创建长期岗位。需要第四层时，Chief 必须先说明原因、期限、岗位结构和不扩层的影响并向你申请。
+
+未完成项目的 Chief 汇报固定包含最终目标、当前阶段、已验证进展、正在工作的岗位、距最终交付的差距和下一检查点。只有全部最终验收标准都有证据时才能宣布项目完成。
+
 ### 当前限制
 
 - 第一版只使用 Codex 原生能力，不修改 Codex 客户端界面。
@@ -152,6 +169,8 @@ Each durable task can use installed Skills automatically and can summon temporar
 - A distinguishable main task name for every project: `Chief of <project name>`.
 - Automatic pinning of the main task after initialization.
 - Human review gates for milestone and final reports, with batch collection so simultaneous updates are not missed.
+- Mandatory user confirmation of the final goal, deliverables, and acceptance criteria before implementation.
+- Continuous phase dispatch until final acceptance, with a three-level management hierarchy by default.
 - One accountable main task for user communication.
 - Durable tasks named `Role｜Work outcome`.
 - Temporary subagent meetings inside durable tasks.
@@ -198,7 +217,11 @@ When no project name is supplied, the initializer uses the project root director
   "project_name": "Personal Web",
   "primary_task_title": "Chief of Personal Web",
   "pin_primary_task": true,
-  "report_approval_required": true
+  "report_approval_required": true,
+  "require_goal_confirmation": true,
+  "max_management_depth": 3,
+  "auto_advance_low_impact": true,
+  "proactive_follow_up": true
 }
 ```
 
@@ -217,6 +240,7 @@ AGENTS.md
     └── arbiter.toml
 .chief-of-staff/
 ├── project.json
+├── project-plan.json
 ├── task-registry.json
 ├── approval-queue.json
 ├── decisions.md
@@ -257,6 +281,16 @@ With the default `report_approval_required` setting enabled, routine progress co
 You still approve or request changes only in the Chief task. The Chief relays each decision to the matching child; until an explicit decision is received, its registry status remains `needs_attention`, and silence or an unrelated message never counts as approval. If the runtime cannot open a native blocking review request, the child emits a `REVIEW_REQUIRED` marker and the Chief opens the human-review request as a fallback.
 
 Report approval acknowledges that handoff only. It does not authorize deletion, release, production changes, payments, external messages, or permission expansion; those high-impact actions still require separate confirmation.
+
+### Goal closure and proactive progression
+
+After initialization, the Chief drafts the final goal, deliverables, acceptance criteria, non-goals, and constraints from available project context and asks you to confirm or revise them. A new project permits only bounded read-only discovery before explicit confirmation. During migration, already-running non-high-impact tasks may finish, but no new task or phase starts. The confirmed contract and criterion-level evidence live in `project-plan.json`.
+
+Once confirmed, the Chief divides the work into phases. Until final acceptance, the project must have an active, queued, or attention-needed role; be waiting for an exact user decision; or be blocked with evidence and a release condition. If every role in a phase stops while final acceptance remains unmet, the Chief dispatches the next safe in-scope phase instead of replying only that no approval is pending.
+
+The default hierarchy is `Chief → Phase Lead → Execution Role/temporary subagents`. Authorized phase leads may create execution roles; temporary subagents cannot create durable roles. A fourth management level requires the Chief to request approval with the reason, duration, proposed structure, and impact of refusal.
+
+Every unfinished-project report includes the final goal, current phase, verified progress, active roles, remaining delivery gap, and next checkpoint. The Chief may declare completion only when every final acceptance criterion has supporting evidence.
 
 ### Current limits
 
