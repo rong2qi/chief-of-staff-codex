@@ -13,6 +13,9 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `max_management_depth`: positive integer; defaults to `3` for Chief → phase lead → execution role.
 - `auto_advance_low_impact`: boolean; permits the Chief to start the next safe in-scope phase without another approval.
 - `proactive_follow_up`: boolean; requires bounded task waits, full active-task snapshots, and next-phase dispatch while final acceptance is unmet.
+- `durable_child_scope`: `same_project`; every durable child must use the Chief's saved project ID.
+- `archive_completed_child_tasks`: boolean; archive a child after approved final handoff and durable state capture.
+- `projectless_child_policy`: `temporary_subagents`; a projectless Chief must not silently create projectless durable tasks.
 - `control_plane`: `native` for the Codex-native implementation.
 - `task_title_pattern`: durable task naming convention.
 - `approval_required`: actions that always require explicit user authorization.
@@ -31,7 +34,7 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 
 - `schema_version`: currently `1`.
 - `tasks`: array of durable task records.
-- Each task record requires `task_id`, `title`, `role`, `objective`, and `status` strings; `host_id`, `last_cursor`, `result_summary`, `parent_task_id`, and `phase_id` are strings or `null`; `management_depth` is a positive integer; `write_surface` and `depends_on` are arrays of strings.
+- Each task record requires `task_id`, `title`, `role`, `objective`, and `status` strings; `host_id`, `project_id`, `last_cursor`, `result_summary`, `parent_task_id`, and `phase_id` are strings or `null`; `management_depth` is a positive integer; `write_surface` and `depends_on` are arrays of strings.
 - Unknown additional keys must be preserved so a future adapter can extend the format.
 
 ## approval-queue.json

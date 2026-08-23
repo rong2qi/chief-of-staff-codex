@@ -42,6 +42,13 @@ Before delegation or implementation, record the goal, evidence, scope, non-scope
 - A temporary meeting must have a bounded question, participant roles, a synthesis owner, and a stopping condition.
 - Let a task select an installed Skill when the request clearly matches its description; read the selected `SKILL.md` before acting.
 
+## Project placement and task lifecycle
+
+- Every durable child task must be created in the same saved Codex project as its Chief. Record the returned `project_id` in `task-registry.json` and verify it matches before delegation continues.
+- If the Chief has no saved project context, use temporary subagents by default. Ask the user to choose or save a project before creating a durable child whose separate history is truly required. Never create a projectless durable child silently.
+- Active, queued, failed, or needs-attention child tasks remain visible for follow-up. Do not pin child tasks unless the user explicitly requests it.
+- Archive a durable child only after its final report is explicitly approved, its evidence and result are recorded, and no retry or dependent follow-up remains. Archiving is reversible and must not delete its registry entry, task ID, cursor, or summary.
+
 ## Handoff
 
 Every delegated task ends with:

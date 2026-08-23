@@ -8,6 +8,9 @@
   "max_management_depth": 3,
   "auto_advance_low_impact": true,
   "proactive_follow_up": true,
+  "durable_child_scope": "same_project",
+  "archive_completed_child_tasks": true,
+  "projectless_child_policy": "temporary_subagents",
   "control_plane": "native",
   "task_title_pattern": "职务｜工作内容",
   "approval_required": [

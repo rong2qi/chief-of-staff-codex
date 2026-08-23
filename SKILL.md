@@ -35,7 +35,9 @@ Read [references/coordination-protocol.md](references/coordination-protocol.md) 
 
 ## Delegate durable work
 
-Use the Codex task tools available in the host. Resolve the current saved project before creating a task. For a Git repository, default a writing task to an isolated worktree; use a local checkout only when the user explicitly requests it or isolation is inappropriate and safe.
+Use the Codex task tools available in the host. Resolve the Chief's current saved project and its `projectId` before creating a task. Create every durable child with that exact project target and verify the returned or listed child has the same `projectId`. Store it as `project_id` in the registry. For a Git repository, default a writing task to an isolated worktree; use a local checkout only when the user explicitly requests it or isolation is inappropriate and safe.
+
+If the Chief has no saved project context, use temporary subagents by default. When separate durable history is genuinely required, ask the user to choose or save a project first; never silently create a projectless durable task. Codex may also show active project tasks in Recents because durable tasks are independently resumable peers. Keep queued, running, failed, and needs-attention children visible there for status and follow-up; do not pin them unless the user explicitly asks.
 
 Every task prompt must include:
 
@@ -61,6 +63,8 @@ For each new report, the Chief must:
 
 Do not silently approve a report. If the child cannot open a native attention request, treat its `REVIEW_REQUIRED` handoff marker as the fallback signal and surface the approval request from the Chief task instead.
 Report approval acknowledges the handoff only. It never authorizes deletion, release, production changes, payments, external messages, permission expansion, or another separately protected action.
+
+When `archive_completed_child_tasks` is `true`, archive a durable child only after the user explicitly approves its final handoff, the Chief records its evidence and result in project state, and no retry or dependent follow-up remains. Then set its registry status to `archived` while preserving `task_id`, `host_id`, `project_id`, cursor, and result summary. Archiving is reversible; never archive a queued, running, failed, needs-attention, or changes-requested task.
 
 ## Maintain goal closure and active progress
 

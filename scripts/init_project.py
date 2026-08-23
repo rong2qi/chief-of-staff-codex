@@ -87,6 +87,7 @@ def migrate_mutable_state(relative: Path, value: object) -> tuple[object, bool]:
                 "parent_task_id": None,
                 "phase_id": None,
                 "management_depth": 2,
+                "project_id": None,
             }
             for key, default in defaults.items():
                 if key not in task:
@@ -124,6 +125,8 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 "pin_primary_task", "report_approval_required", "task_title_pattern",
                 "require_goal_confirmation", "max_management_depth",
                 "auto_advance_low_impact", "proactive_follow_up", "approval_required",
+                "durable_child_scope", "archive_completed_child_tasks",
+                "projectless_child_policy",
             },
             relative,
             errors,
@@ -142,12 +145,19 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
         for key in (
             "pin_primary_task", "report_approval_required", "require_goal_confirmation",
             "auto_advance_low_impact", "proactive_follow_up",
+            "archive_completed_child_tasks",
         ):
             if key in value and not isinstance(value[key], bool):
                 errors.append(f"{key} in {relative} must be a boolean")
         max_depth = value.get("max_management_depth")
         if not isinstance(max_depth, int) or isinstance(max_depth, bool) or max_depth < 1:
             errors.append(f"max_management_depth in {relative} must be a positive integer")
+        if value.get("durable_child_scope") != "same_project":
+            errors.append(f"durable_child_scope in {relative} must be 'same_project'")
+        if value.get("projectless_child_policy") != "temporary_subagents":
+            errors.append(
+                f"projectless_child_policy in {relative} must be 'temporary_subagents'"
+            )
         approvals = value.get("approval_required")
         if not isinstance(approvals, list) or not all(isinstance(item, str) for item in approvals):
             errors.append(f"approval_required in {relative} must be an array of strings")
@@ -310,6 +320,7 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             "task_id", "host_id", "title", "role", "objective", "status",
             "write_surface", "depends_on", "last_cursor", "result_summary",
             "parent_task_id", "phase_id", "management_depth",
+            "project_id",
         }
         statuses = {"queued", "running", "needs_attention", "completed", "failed", "archived"}
         for index, task in enumerate(tasks):
@@ -330,7 +341,8 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 ):
                     errors.append(f"{key} in {label} must be an array of strings")
             for key in (
-                "host_id", "last_cursor", "result_summary", "parent_task_id", "phase_id"
+                "host_id", "last_cursor", "result_summary", "parent_task_id", "phase_id",
+                "project_id",
             ):
                 if key in task and task[key] is not None and not isinstance(task[key], str):
                     errors.append(f"{key} in {label} must be a string or null")
@@ -508,7 +520,13 @@ def initialize(target: Path, project_name: str) -> int:
                 try:
                     existing_project = json.loads(destination.read_text(encoding="utf-8"))
                     expected_project = json.loads(expected.decode("utf-8"))
-                    previous_dynamic = dict(expected_project)
+                    previous_project_scoping = dict(expected_project)
+                    for key in (
+                        "durable_child_scope", "archive_completed_child_tasks",
+                        "projectless_child_policy",
+                    ):
+                        previous_project_scoping.pop(key, None)
+                    previous_dynamic = dict(previous_project_scoping)
                     for key in (
                         "require_goal_confirmation", "max_management_depth",
                         "auto_advance_low_impact", "proactive_follow_up",
@@ -521,7 +539,8 @@ def initialize(target: Path, project_name: str) -> int:
                     previous_legacy = dict(previous_before_pinning)
                     previous_legacy["primary_task_title"] = "Chief of Staff"
                     if existing_project in (
-                        previous_dynamic, previous_before_report_approval,
+                        previous_project_scoping, previous_dynamic,
+                        previous_before_report_approval,
                         previous_before_pinning, previous_legacy,
                     ):
                         planned.append((destination, expected))
@@ -530,9 +549,11 @@ def initialize(target: Path, project_name: str) -> int:
                     pass
             if relative == Path("AGENTS.md"):
                 current_text = expected.decode("utf-8")
+                project_lifecycle = """\n## Project placement and task lifecycle\n\n- Every durable child task must be created in the same saved Codex project as its Chief. Record the returned `project_id` in `task-registry.json` and verify it matches before delegation continues.\n- If the Chief has no saved project context, use temporary subagents by default. Ask the user to choose or save a project before creating a durable child whose separate history is truly required. Never create a projectless durable child silently.\n- Active, queued, failed, or needs-attention child tasks remain visible for follow-up. Do not pin child tasks unless the user explicitly requests it.\n- Archive a durable child only after its final report is explicitly approved, its evidence and result are recorded, and no retry or dependent follow-up remains. Archiving is reversible and must not delete its registry entry, task ID, cursor, or summary.\n"""
                 goal_closure = """\n## Goal closure and active progression\n\n- Before implementation, the Chief proposes and asks the user to confirm the final goal, deliverables, acceptance criteria, non-goals, and constraints. A new project permits only bounded read-only discovery before confirmation. In a migrated project, already-running non-high-impact tasks may finish, but no new task or phase starts before confirmation.\n- A phase completion is not project completion. The project is complete only when the goal is confirmed and every final acceptance criterion has non-empty verification evidence in `project-plan.json`.\n- Until completion, keep a phase task queued, running, or needing attention unless the project is explicitly waiting for the user or blocked with evidence and a release condition. If all phase tasks stop while final acceptance is unmet, immediately dispatch the next safe in-scope phase.\n- Follow all active tasks with bounded waits. After any completion, failure, or attention event, snapshot every active task before deciding what comes next.\n- A Chief report for an unfinished project always includes the final goal, current phase, verified progress, active roles, gap to delivery, and next checkpoint, even when no approval is pending.\n- Management depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role. Phase leads may create depth-3 tasks only when explicitly authorized in their contract. Temporary subagents cannot create durable roles. Depth 4 or deeper requires an approved `depth_expansion` request.\n- The Chief is the sole writer of `project-plan.json`, `task-registry.json`, `approval-queue.json`, and consolidated status. Low-impact in-scope phases advance automatically; protected actions retain their separate approval requirements.\n"""
                 report_gate = """\n## Report approval gate\n\nWhen `.chief-of-staff/project.json` sets `report_approval_required` to `true`, every milestone report and final handoff includes a stable `<task_id>:<report_sequence>` ID and requests `批准` or `退回修改`. The child opens a blocking review request so Codex marks it as needing attention; if the host cannot do that, it ends with `REVIEW_REQUIRED: <request_id>`. The Chief snapshots all active children after any wake-up, records every unseen request in `approval-queue.json`, and batches pending reports for the user in the Chief task. Only the user's explicit decision relayed by the Chief clears the gate.\n"""
-                previous_current = current_text.replace(goal_closure, "")
+                previous_project_scoping = current_text.replace(project_lifecycle, "")
+                previous_current = previous_project_scoping.replace(goal_closure, "")
                 previous_current = previous_current.replace(
                     "- `.chief-of-staff/project-plan.json`: confirmed final goal, acceptance evidence, project status, and phase plan.\n",
                     "",
@@ -550,6 +571,7 @@ def initialize(target: Path, project_name: str) -> int:
                     "- A task is the Chief of Staff only when its title or initiating prompt explicitly assigns that role.",
                 )
                 if destination.read_bytes() in {
+                    previous_project_scoping.encode("utf-8"),
                     previous_current.encode("utf-8"), previous_text.encode("utf-8"),
                     legacy_text.encode("utf-8"),
                 }:

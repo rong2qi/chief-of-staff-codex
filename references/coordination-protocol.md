@@ -46,11 +46,15 @@ While the project is unfinished, keep an active or queued phase task unless the 
 
 Title every durable child task `职务｜工作内容`. Keep the role short and make the work content outcome-oriented, for example `技术负责人｜支付架构决策`.
 
+Resolve the Chief's saved Codex `projectId` before creation and use the same project target for every durable child. Verify and record the child's `project_id`. If no saved project is available, use temporary subagents; ask the user to select or save a project before creating a durable child. Do not silently leave durable tasks projectless.
+
 Add a registry entry as soon as creation succeeds. Update it when status, ownership, result, blocker, or task cursor changes. Task status is one of `queued`, `running`, `needs_attention`, `completed`, `failed`, or `archived`.
 
 Depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role. A phase lead may create depth-3 durable tasks only when its delegated contract explicitly authorizes task creation. Temporary subagents at depth 3 are bounded helpers and cannot create durable roles. Depth 4 or deeper requires a pending `depth_expansion` request and explicit user approval before creation. The Chief remains the sole writer of central project state.
 
 For every active phase, monitor all known task IDs with bounded waits. When one task completes, fails, or needs attention, immediately snapshot all active task IDs, then update the registry and phase plan from the complete result set. This prevents the first event from hiding simultaneous progress and ensures an idle phase is either advanced, blocked with evidence, or escalated with an exact decision.
+
+Active durable children may appear in Recents as independently resumable tasks. Keep them visible while queued, running, failed, or needing attention. After an explicitly approved final handoff has been recorded and no retry or dependent follow-up remains, archive the child and mark its registry status `archived`. Preserve identifiers, cursor, evidence, and summary; archiving is reversible and is not deletion.
 
 ## Report approval gate
 
