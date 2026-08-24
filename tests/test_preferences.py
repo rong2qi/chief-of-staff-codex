@@ -57,7 +57,6 @@ class PreferenceTests(unittest.TestCase):
                 "--preset", "operator-controlled-bilingual",
                 "--scope", "global",
                 "--salutation", "妈妈",
-                "--voice", "Samantha",
                 "--audio-rate", "170",
                 "--data-root", data,
                 "--agents-file", agents,
@@ -68,12 +67,10 @@ class PreferenceTests(unittest.TestCase):
             self.assertTrue(profile["visual_selection_gate"]["enabled"])
             self.assertTrue(profile["american_english_coaching"]["include_casual_chat"])
             self.assertEqual(profile["audio_playback"]["clips"], ["written", "spoken"])
-            self.assertEqual(
-                profile["audio_playback"]["storage_root"],
-                str((data / "english-audio").resolve()),
-            )
+            self.assertEqual(profile["audio_playback"]["provider"], "host_builtin")
+            self.assertIsNone(profile["audio_playback"]["storage_root"])
             self.assertEqual(profile["operator_salutation"]["value"], "妈妈")
-            self.assertEqual(profile["audio_playback"]["voice"], "Samantha")
+            self.assertIsNone(profile["audio_playback"]["voice"])
             self.assertEqual(profile["audio_playback"]["rate"], 170)
             content = agents.read_text()
             self.assertEqual(content.count("chief-of-staff-preferences:start"), 1)
@@ -203,6 +200,7 @@ class PreferenceTests(unittest.TestCase):
                 "--preset", "operator-controlled-bilingual",
                 "--scope", "global",
                 "--salutation", "妈妈",
+                "--audio-provider", "auto",
                 "--data-root", data,
                 "--agents-file", agents,
             )
@@ -245,6 +243,7 @@ class PreferenceTests(unittest.TestCase):
             profile = json.loads(
                 (ROOT / "assets/presets/operator-controlled-bilingual.json").read_text()
             )
+            profile["audio_playback"]["provider"] = "auto"
             profile["audio_playback"]["storage_root"] = str(root / "missing")
             profile_path = root / "profile.json"
             profile_path.write_text(json.dumps(profile), encoding="utf-8")
@@ -261,6 +260,40 @@ class PreferenceTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertEqual(json.loads(result.stdout)["status"], "text_only")
             self.assertFalse((root / "missing").exists())
+
+    def test_host_builtin_voice_generates_no_audio_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data = root / "data"
+            data.mkdir()
+            agents = root / "AGENTS.md"
+            configured = run_config(
+                "--preset", "operator-controlled-bilingual",
+                "--scope", "global",
+                "--data-root", data,
+                "--agents-file", agents,
+            )
+            self.assertEqual(configured.returncode, 0, configured.stderr)
+            profile_path = data / "chief-preferences.json"
+            profile = json.loads(profile_path.read_text())
+            self.assertEqual(profile["audio_playback"]["provider"], "host_builtin")
+            self.assertIsNone(profile["audio_playback"]["storage_root"])
+            self.assertFalse((data / "english-audio").exists())
+
+            rendered = subprocess.run(
+                [
+                    sys.executable, str(RENDER),
+                    "--profile", str(profile_path),
+                    "--kind", "spoken",
+                    "--text", "Use the built-in voice.",
+                ],
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(rendered.returncode, 0, rendered.stderr)
+            result = json.loads(rendered.stdout)
+            self.assertEqual(result["status"], "text_only")
+            self.assertIn("host built-in voice", result["reason"])
 
 
 if __name__ == "__main__":

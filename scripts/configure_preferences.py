@@ -45,6 +45,8 @@ def build_profile(args: argparse.Namespace) -> dict:
     if args.disable_reminders:
         profile["reminders"]["enabled"] = False
 
+    if args.audio_provider:
+        profile["audio_playback"]["provider"] = args.audio_provider
     if args.voice:
         profile["audio_playback"]["voice"] = args.voice
     if args.audio_rate is not None:
@@ -75,10 +77,16 @@ def build_profile(args: argparse.Namespace) -> dict:
     if args.data_root and (not data_root.exists() or not data_root.is_dir()):
         raise PreferenceError("custom --data-root must already exist and be a directory")
 
-    if profile["audio_playback"]["enabled"]:
+    if (
+        profile["audio_playback"]["enabled"]
+        and profile["audio_playback"]["provider"] in {"auto", "macos_say"}
+    ):
         profile["audio_playback"]["storage_root"] = str(data_root / "english-audio")
     else:
         profile["audio_playback"]["storage_root"] = None
+
+    if profile["audio_playback"]["provider"] == "host_builtin" and args.voice:
+        raise PreferenceError("--voice is only valid for auto or macos_say audio")
 
     if profile_path.exists():
         existing = read_json(profile_path)
@@ -105,6 +113,11 @@ def main() -> int:
     reminder.add_argument("--enable-reminders", action="store_true")
     reminder.add_argument("--disable-reminders", action="store_true")
     parser.add_argument("--voice", help="Preferred installed en-US system voice")
+    parser.add_argument(
+        "--audio-provider",
+        choices=("host_builtin", "auto", "macos_say"),
+        help="Built-in host voice or an opt-in offline attachment renderer",
+    )
     parser.add_argument("--audio-rate", type=int, help="Words per minute, 80-350")
     parser.add_argument("--data-root", help="Absolute persistent data root")
     parser.add_argument("--project-root", help="Required for project scope")

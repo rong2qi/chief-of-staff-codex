@@ -19,7 +19,7 @@
       "written",
       "spoken"
     ],
-    "provider": "auto",
+    "provider": "host_builtin",
     "voice": null,
     "locale": "en-US",
     "rate": 175,

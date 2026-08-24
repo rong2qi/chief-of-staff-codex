@@ -42,6 +42,8 @@ def main() -> int:
     audio = profile["audio_playback"]
     if not coaching["enabled"] or not audio["enabled"]:
         return result("text_only", reason="audio coaching is disabled")
+    if audio["provider"] == "host_builtin":
+        return result("text_only", reason="host built-in voice selected; no offline attachment generated")
     if args.kind not in audio["clips"]:
         return result("text_only", reason=f"{args.kind} clip is disabled")
     if not args.text.strip():

@@ -46,6 +46,14 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 - 可选的美式英语教学可覆盖工作消息和闲聊，分别提供书面、口语、地道用法及两个独立音频片段。
 - 可选启用一个跨项目、置顶的 Chief 待回复 TODO，并按个人策略定时提醒；关闭后完全不运行提醒。
 
+### Token 成本与适用对象
+
+Chief of Staff 是一个强调长期上下文、岗位分工、独立复核和持续跟进的编排层，因此可能让 Token 用量明显高于完成同一项工作的单代理对话。每个长期任务和 subagent 都会执行自己的模型推理与工具调用；并发岗位越多、上下文越长、复核轮次越多，增量通常越明显。OpenAI 官方文档同样说明，subagent 工作流会比可比的单代理运行消耗更多 Token。[OpenAI Subagents 文档](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+
+- **企业或成熟团队：推荐直接使用。** 它更适合跨产品、研发、测试、合规和部署的长周期项目，尤其是需要职责隔离、审批记录、证据链和统一汇报的场景。建议同时设置并发上限、模型路由、阶段预算和停止条件。
+- **个人用户或新手：建议按需启用。** 简单任务不要启动完整 Chief 层级；优先使用 `core` 预设、单阶段/单写入者和更低成本模型。编码任务可搭配经过审计、显式调用的 `$lean-code-path`（基于 [Ponytail](https://github.com/DietrichGebert/ponytail)）减少过度工程；长对话则使用能保留目标、决定、待办和证据的上下文压缩 Skill。Ponytail 主要减少不必要代码，并不保证所有模型或任务都降低 Token。
+- **不要以“烧 Token”作为成果指标。** 应以完成交付物、验证证据、阻塞解除时间和最终验收为准。降 Token Skill 也不能代替人工审批、完整验收或原始记录留存。
+
 ### 环境要求
 
 - 支持 Skills 和 subagents 的新版 Codex 桌面端、Codex CLI 或 IDE 扩展。
@@ -74,11 +82,11 @@ $chief-of-staff 初始化这个项目
 
 如果还没有偏好档案，支持原生阻塞式选择面板的 Codex 客户端会先显示一张三问表单：
 
-1. 预设：`核心 Chief`、`操作者主导 + 双语教学` 或 `自定义`；
+1. 预设：`核心 Chief`、`操作者主导 + 双语教学` 或 `自定义`；表单会同时显示“企业/成熟团队推荐完整 Chief（配置并发、模型、阶段预算和停止条件）”以及“个人/小白推荐核心 Chief、单阶段/单写入者和低成本模型”的说明；
 2. 称呼：中性、`妈妈` 或自定义；
 3. 数据位置：默认个人目录、外置磁盘/自定义绝对路径，或仅当前项目。
 
-Codex 随后展示将启用的规则、写入位置和降级行为，并只在用户选择“应用”后写入。选择“自定义”时，第二张表单可以分别控制视觉确认、闲聊英语教学、书面/口语/地道用法、两类音频、声音与语速、暂停标题、TODO 提醒及其周期。没有原生面板的 CLI 或 IDE 会使用同样问题进行简短对话，不会伪造弹窗。
+个人/小白还会看到可搜索的 `Ponytail` / `$lean-code-path` 显式调用建议；向导不会替用户安装或启用它。Codex 随后展示将启用的规则、写入位置、语音方式和降级行为，并只在用户选择“应用”后写入。选择“自定义”时，第二张表单可以分别控制视觉确认、闲聊英语教学、书面/口语/地道用法、Codex 内置语音或离线音频附件、声音与语速、暂停标题、TODO 提醒及其周期。没有原生面板的 CLI 或 IDE 会使用同样问题进行简短对话，不会伪造弹窗。
 
 也可完全跳过交互：
 
@@ -87,7 +95,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
   --preset operator-controlled-bilingual \
   --scope global \
   --salutation 妈妈 \
-  --voice Samantha \
+  --audio-provider host_builtin \
   --data-root /Volumes/ExternalDrive/chief-data
 ```
 
@@ -97,12 +105,12 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 
 - `visual_selection_gate.enabled`
 - `american_english_coaching.enabled` 与 `include_casual_chat`
-- `audio_playback.enabled`、`clips`、`voice`、`rate` 与 `storage_root`
+- `audio_playback.enabled`、`provider`、`clips`、`voice`、`rate` 与 `storage_root`
 - `operator_salutation.enabled/value`
 - `paused_title_prefix.enabled/value`
 - `reminders.enabled`、时区、日间窗口、周期与额外提醒时间
 
-配置器只更新 `AGENTS.md` 中带标记的受管片段，不覆盖其他规则。逐句音频使用文本、类型、声音和语速的内容哈希复用 `.m4a` 文件；书面和口语分别生成。若外置存储、macOS `say` 或所选声音不可用，只返回文字，不写入其他目录。Codex 内置 Voice 仍用于实时语音对话，逐句播放器属于 Skill 的独立离线附件功能。
+配置器只更新 `AGENTS.md` 中带标记的受管片段，不覆盖其他规则。双语预设默认采用 `host_builtin`：Skill 提供英文文本，由 Codex/ChatGPT 客户端的内置语音或朗读控件负责播放，不生成音频文件，也不声称能自动播放某一句。若用户在自定义表单中选择离线附件，才使用文本、类型、声音和语速的内容哈希复用独立 `.m4a` 文件；外置存储、macOS `say` 或所选声音不可用时只返回文字，不写入其他目录。
 
 ### 使用
 
@@ -287,6 +295,14 @@ Each durable task can use installed Skills automatically and can summon temporar
 - An optional human visual-selection gate: projects submit clickable previews to a configured review hub, and no unselected option may become the final version.
 - An optional pinned, cross-project unanswered-Chief TODO with configurable reminders; disabling it stops all reminder runs.
 
+### Token cost and intended users
+
+Chief of Staff is an orchestration layer built around durable context, role separation, independent review, and proactive follow-up. It can therefore use substantially more tokens than a comparable single-agent conversation. Every durable task and subagent performs its own model and tool work; additional parallel roles, longer contexts, and repeated review cycles generally increase that overhead. OpenAI's documentation likewise notes that subagent workflows consume more tokens than comparable single-agent runs. [OpenAI Subagents documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+
+- **Enterprises and mature teams: recommended for direct use.** It fits long-running cross-functional work that benefits from ownership boundaries, approval records, evidence trails, and consolidated reporting. Configure concurrency limits, model routing, phase budgets, and stopping conditions.
+- **Individuals and beginners: enable it selectively.** Do not start the full hierarchy for a simple task. Prefer the `core` preset, one phase/one writer, and lower-cost models. For coding, consider the audited explicit-only `$lean-code-path`, derived from [Ponytail](https://github.com/DietrichGebert/ponytail), to reduce over-engineering. For long conversations, use a context-compression Skill that preserves goals, decisions, TODOs, and evidence. Ponytail primarily reduces unnecessary code and does not guarantee lower token usage on every model or task.
+- **Token burn is not a success metric.** Evaluate delivered artifacts, verification evidence, blocker resolution, and final acceptance. A token-reduction Skill must not replace human approvals, complete validation, or retention of auditable source records.
+
 ### Requirements
 
 - A current Codex desktop app, Codex CLI, or IDE extension with Skills and subagents enabled.
@@ -315,11 +331,11 @@ $chief-of-staff initialize this project
 
 If no profile exists, a Codex host with a native blocking selection panel presents three questions in one form:
 
-1. Preset: `Core Chief`, `Operator-controlled + bilingual coaching`, or `Custom`.
+1. Preset: `Core Chief`, `Operator-controlled + bilingual coaching`, or `Custom`. The form also explains that full Chief coordination is recommended for enterprises and mature teams with explicit concurrency/model/phase budgets, while individuals and beginners should prefer Core Chief, one phase/one writer, and lower-cost routing.
 2. Salutation: neutral, `妈妈`, or a custom value.
 3. Data location: the default personal directory, an external/custom absolute path, or the current project only.
 
-Codex previews the enabled rules, destination, and fallback behavior, then writes only after a final Apply confirmation. Custom mode opens a second form for visual approval, casual-chat coaching, written/spoken/idiom notes, both audio clips, voice and rate, pause-title behavior, TODO reminders, and reminder cadence. A CLI or IDE without the native panel asks the same questions conversationally; it does not simulate a pop-up.
+Individuals and beginners also see a searchable `Ponytail` / `$lean-code-path` explicit-only recommendation; onboarding never installs or enables it. Codex previews the enabled rules, destination, voice delivery, and fallback behavior, then writes only after a final Apply confirmation. Custom mode opens a second form for visual approval, casual-chat coaching, written/spoken/idiom notes, built-in host voice or offline audio attachments, voice and rate, pause-title behavior, TODO reminders, and reminder cadence. A CLI or IDE without the native panel asks the same questions conversationally; it does not simulate a pop-up.
 
 For deterministic non-interactive setup:
 
@@ -328,13 +344,13 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
   --preset operator-controlled-bilingual \
   --scope global \
   --salutation Operator \
-  --voice Samantha \
+  --audio-provider host_builtin \
   --data-root /Volumes/ExternalDrive/chief-data
 ```
 
 A custom data root must already exist. A missing or unwritable external disk fails safely with no local fallback. Global preferences are configured once and inherited by future projects; use `$chief-of-staff reconfigure my preferences` to run onboarding again. The public `core` preset leaves every personal rule disabled.
 
-The unified profile controls visual selection, American-English coaching and casual-chat coverage, written/spoken audio, voice, rate, salutation, pause-title prefix, and reminder schedule. The configurator replaces only a marked managed block in `AGENTS.md`. Audio clips are separate content-addressed `.m4a` files, so repeated text reuses the same file. Missing storage, tools, or voice support returns text only and never writes elsewhere. Built-in Codex Voice remains the realtime conversation mode; these clips are separate offline attachments.
+The unified profile controls visual selection, American-English coaching and casual-chat coverage, voice delivery, salutation, pause-title prefix, and reminder schedule. The configurator replaces only a marked managed block in `AGENTS.md`. The bilingual preset defaults to `host_builtin`: the Skill supplies the English text and the Codex/ChatGPT client owns voice/read-aloud playback, with no generated audio files and no promise of per-sentence autoplay. Offline attachments remain opt-in; when selected, separate content-addressed `.m4a` files are reused by text hash, and missing storage or renderer support safely returns text only.
 
 ### Use
 

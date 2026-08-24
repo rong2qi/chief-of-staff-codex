@@ -90,8 +90,9 @@ def validate_preferences(profile: dict[str, Any]) -> list[str]:
         or len(set(clips)) != len(clips)
     ):
         errors.append("audio_playback.clips must be unique written/spoken values")
-    if audio.get("provider") not in {"auto", "macos_say"}:
-        errors.append("audio_playback.provider must be auto or macos_say")
+    provider = audio.get("provider")
+    if provider not in {"host_builtin", "auto", "macos_say"}:
+        errors.append("audio_playback.provider must be host_builtin, auto, or macos_say")
     if audio.get("voice") is not None and not isinstance(audio.get("voice"), str):
         errors.append("audio_playback.voice must be a string or null")
     if audio.get("locale") != "en-US":
@@ -103,8 +104,10 @@ def validate_preferences(profile: dict[str, Any]) -> list[str]:
     if storage_root is not None:
         if not isinstance(storage_root, str) or not Path(storage_root).expanduser().is_absolute():
             errors.append("audio_playback.storage_root must be an absolute path or null")
-    if audio.get("enabled") is True and storage_root is None:
-        errors.append("enabled audio_playback requires storage_root")
+    if audio.get("enabled") is True and provider in {"auto", "macos_say"} and storage_root is None:
+        errors.append("enabled offline audio_playback requires storage_root")
+    if provider == "host_builtin" and storage_root is not None:
+        errors.append("host_builtin audio_playback requires storage_root to be null")
     if audio.get("unavailable_behavior") != "text_only":
         errors.append("audio_playback.unavailable_behavior must be text_only")
 
@@ -181,7 +184,7 @@ def managed_agents_block(profile_path: Path, renderer_path: Path) -> str:
 - If `operator_salutation.enabled` is true, use its configured value unless the operator explicitly overrides it in the current conversation.
 - If `visual_selection_gate.enabled` is true, require clickable non-final previews and the operator's explicit selection before final visual implementation.
 - If `american_english_coaching.enabled` is true, append its configured written, spoken, and idiom sections. Include casual conversation only when `include_casual_chat` is true.
-- If audio is enabled, render each enabled written/spoken sentence with `{renderer_path}` and attach the returned absolute `.m4a` path separately. If rendering returns `text_only`, keep the text and do not write to another directory.
+- If audio is enabled with `provider: host_builtin`, keep the English text available for the host's built-in voice/read-aloud control; generate no files and do not claim autoplay or per-sentence native controls. For `auto` or `macos_say`, render each enabled written/spoken sentence with `{renderer_path}` and attach the returned absolute `.m4a` path separately. If rendering returns `text_only`, keep the text and do not write to another directory.
 - Apply the configured pause-title prefix and reminder policy only when their sections are enabled. Saving reminder preferences does not itself authorize creating or changing automations.
 {MANAGED_END}"""
 
