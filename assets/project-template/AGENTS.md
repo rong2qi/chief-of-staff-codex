@@ -8,6 +8,7 @@ This project is coordinated through one primary Codex task named `Chief of {{PRO
 - A task is the Chief of Staff only when its title matches the `primary_task_title` in `.chief-of-staff/project.json` or its initiating prompt explicitly assigns that role. Other tasks follow their delegated contract and return a structured handoff; they do not create a competing control plane.
 - Ordinary questions stay inside the hierarchy. Escalate to the user only for required approvals, safety or security concerns, destructive or external actions, or product choices with materially different outcomes that evidence cannot resolve.
 - Separate verified facts, inference, open questions, risks, and next steps in every report.
+- Optional interaction policies come from a validated global profile or `.chief-of-staff/preferences.json`. Apply only sections whose `enabled` value is true; missing preferences mean neutral public behavior.
 
 ## Execution contract
 
@@ -27,6 +28,32 @@ Before delegation or implementation, record the goal, evidence, scope, non-scope
 - A Chief report for an unfinished project always includes the final goal, current phase, verified progress, active roles, gap to delivery, and next checkpoint, even when no approval is pending.
 - Management depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role. Phase leads may create depth-3 tasks only when explicitly authorized in their contract. Temporary subagents cannot create durable roles. Depth 4 or deeper requires an approved `depth_expansion` request.
 - The Chief is the sole writer of `project-plan.json`, `task-registry.json`, `approval-queue.json`, and consolidated status. Low-impact in-scope phases advance automatically; protected actions retain their separate approval requirements.
+- Use `/goal` only after the final goal is confirmed, acceptance criteria are testable, and no human approval gate remains. A goal command is never a substitute for a required user decision.
+
+## Effective throughput and durable goals
+
+- The default execution mode is `effective_throughput`: run at most `max_parallel_phase_lanes` independent lanes (default two), with one writer per surface and an explicit dependency boundary.
+- Durable goals are enabled only after the confirmed goal contract is recorded. A lane must produce concrete evidence at each checkpoint. After `no_evidence_checkpoint_limit` consecutive checkpoints without evidence (default two), stop the lane, self-check scope, blockers, ownership, and acceptance method, then report or request the smallest necessary decision.
+- Record lane state, the consecutive no-evidence count, and the last evidence checkpoint in `.chief-of-staff/throughput.json`; do not reset the count merely because a task emitted prose.
+
+## Creative direction and deployment registry
+
+- A Creative Director performs bounded scans at 11:00 and 20:00 Beijing time rather than running an empty durable goal. It may hold at most one pending recommendation; it records preference evidence as `explicit`, `confirmed_pattern`, or `hypothesis`, reads other projects only, and never messages their tasks or changes their files.
+- A new project must pass the goal-confirmation evidence gate before creative implementation begins. Record the scan evidence, ranked preferences, pending recommendation, and decision status only in the specialized creative-direction work state.
+- When cloud deployment work is explicitly in scope, keep its independent registry separate from generic Chief state. Registry entries do not authorize operations: every production deployment, production change, release, or rollback still requires a separate immediately-prior explicit user approval.
+
+## Optional visual selection gate
+
+- When `visual_selection_gate.enabled` is true, neither the Chief nor a role may finalize an unselected visual option. Create clickable non-final previews, use a stable decision ID, and send them to the configured review hub.
+- Only the operator's explicit selection, combination, modification, rejection, revocation, or replacement resolves that gate. Recommendations, defaults, silence, inference, or relayed context do not count.
+- When the gate is disabled, ordinary product-decision and high-impact approval boundaries still apply.
+
+## Optional salutation, coaching, audio, and pause title
+
+- Use the configured salutation only when `operator_salutation.enabled` is true.
+- Add American-English coaching only when `american_english_coaching.enabled` is true, and include casual chat only when its dedicated flag is true.
+- Generate separate written and spoken audio only when `audio_playback.enabled` is true. Use only its configured storage root; unavailable audio falls back to text without writing elsewhere.
+- Decorate a Chief title on explicit pause/resume only when `paused_title_prefix.enabled` is true. Never infer pause from idleness, `awaiting_user`, `blocked`, or a report gate.
 
 ## Write ownership
 
@@ -87,3 +114,4 @@ When `.chief-of-staff/project.json` sets `report_approval_required` to `true`, e
 - `.chief-of-staff/decisions.md`: append-only material decision log.
 - `.chief-of-staff/status.md`: current consolidated report for the user.
 - `.chief-of-staff/control-plane.json`: reserved adapter seam for a future external orchestrator.
+- `.chief-of-staff/throughput.json`: lane limits and evidence-checkpoint state.

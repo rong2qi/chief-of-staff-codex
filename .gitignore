@@ -1,0 +1,9 @@
+# Personal runtime configuration and generated media never belong in the public Skill.
+*.local.json
+chief-preferences.json
+english-audio/
+audio-cache/
+__pycache__/
+*.pyc
+.DS_Store
+._*

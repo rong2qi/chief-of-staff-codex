@@ -7,19 +7,47 @@ metadata:
 
 # Chief of Staff
 
+## 新增执行政策 / New execution policy
+
+- 默认 `effective_throughput`：最多两个独立阶段并行，每个检查点必须产生可验证证据；连续两个检查点无证据即停止并自查。
+- `/goal` 仅用于已确认、可验收且没有人工审批门的目标。`durable_goal_enabled` 不会绕过目标确认或高影响操作审批。
+- 创意总监只在北京时间每天 11:00 和 20:00 执行有证据的扫描；最多保留一条待定建议。偏好证据分为 `explicit`、`confirmed_pattern` 和 `hypothesis`，且该角色只读其他项目、不发消息、不改文件。
+- 云部署统一登记在独立 registry；登记不授权生产操作，生产变更、发布或回滚仍须紧邻操作前的明确用户批准。
+- 视觉确认、暂停标题、操作者称呼和美式英语教学是可选个人策略；仅在已验证偏好档案中对应 `enabled` 为 `true` 时执行。
+
+- Default `effective_throughput` permits at most two independent phase lanes. Every checkpoint needs verifiable evidence; stop and self-check after two evidence-free checkpoints.
+- Use `/goal` only for a confirmed, testable goal with no human gate. `durable_goal_enabled` never bypasses confirmation or protected-action approval.
+- The Creative Director runs evidence-backed scans at 11:00 and 20:00 Beijing time, retains at most one pending recommendation, classifies preference evidence as `explicit`, `confirmed_pattern`, or `hypothesis`, and is read-only across other projects.
+- Cloud deployments are recorded in an independent registry. Registration never authorizes a production operation, release, or rollback.
+- Visual confirmation, pause-title decoration, operator salutation, and American-English coaching are optional personal policies. Apply them only when their validated profile sections are enabled.
+
 Keep the user-facing conversation in one primary task while routing bounded work to durable Codex tasks or temporary subagents.
+
+## Configure optional operator preferences
+
+Cloning or installing this Skill never runs setup. Enter onboarding only when the operator explicitly asks to configure or reconfigure Chief of Staff, or asks to initialize a project and no saved preference profile can be found. Read [references/operator-preferences.md](references/operator-preferences.md) before onboarding, profile validation, global-rule installation, or audio rendering.
+
+When the host exposes a blocking selection UI, present the preset, salutation, and data-placement questions together. Otherwise ask the same short questions conversationally. Show the resolved policies, destination, and `text_only` audio fallback, then require one Apply / Revise / Cancel decision. Cancel writes nothing. Do not repeat onboarding after a profile is saved.
+
+Use `scripts/configure_preferences.py` for deterministic writes. Public defaults are neutral: no visual selection gate, coaching, audio, salutation, pause prefix, or reminders. The anonymous `operator-controlled-bilingual` preset enables operator-controlled visual selection, written/spoken/idiom coaching including casual chat, separate written and spoken audio, and the pause prefix; salutation and reminder activation remain explicit choices.
+
+A global profile is referenced by the managed block in the personal `AGENTS.md`. A project profile lives at `.chief-of-staff/preferences.json` and overrides optional policies only for that project. Never publish a live profile or generated audio.
 
 ## Initialize a project
 
 When the user says “初始化 Chief of Staff”, “启用 Chief of Staff”, or an equivalent explicit request:
 
-1. Run `python3 scripts/init_project.py --target <project-root> --project-name <name>` from this skill directory. Never overwrite conflicts; report them.
+1. Resolve optional preferences first. If onboarding is required, complete it before initialization. Run `python3 scripts/init_project.py --target <project-root> --project-name <name>` from this skill directory; when a project-scoped profile was selected, also pass `--preferences <profile-path>`. Never overwrite conflicts; report them.
 2. Read `.chief-of-staff/project.json`. Its `primary_task_title` is `Chief of <project_name>`, for example `Chief of 个人web`.
 3. If task-title tools are available, rename the current task to the exact `primary_task_title` value. Do not claim the rename succeeded unless the tool confirms it.
 4. When `pin_primary_task` is `true`, resolve the current task ID and pin that task after the rename. Prefer a runtime-provided current task ID; otherwise list tasks and require one exact `primary_task_title` match in the current project context. Never pin an ambiguous match, and do not claim success unless the pin tool confirms it. If task pinning is unavailable, report that limitation while leaving project initialization intact.
 5. Read the generated `AGENTS.md` and treat it with `project.json` as the project operating contract.
 6. Read `.chief-of-staff/project-plan.json`. When `require_goal_confirmation` is `true` and `goal_status` is `unconfirmed`, infer a concise draft from available context and ask the user to confirm or revise the final goal, deliverables, acceptance criteria, non-goals, and constraints. Record a `goal_confirmation` request in `approval-queue.json`. A new project permits only bounded read-only discovery before confirmation. In a migrated project, already-running non-high-impact tasks may finish, but do not dispatch a new task or phase until the goal is confirmed.
 7. After explicit confirmation, set `goal_status` to `confirmed` and `project_status` to `active`, record the confirmed values and time, define the first phase, and start at least one phase task. Record active durable tasks in `.chief-of-staff/task-registry.json`; record meaningful decisions in `.chief-of-staff/decisions.md`; maintain the consolidated user report in `.chief-of-staff/status.md`.
+
+## Reflect explicit pause state in the Chief title
+
+When `paused_title_prefix.enabled` is true and the operator explicitly pauses a project, use the thread-title tool to prefix its Chief with the configured value as soon as the pause decision is recorded. Preserve the saved project, thread ID, and pin state, and make the operation idempotent. On an explicit resume, remove exactly one leading configured prefix before restarting work. Do not infer a pause from an idle task, `awaiting_user`, `blocked`, a report gate, or an empty active-role list. When the preference is disabled, record pause state without decorating the title.
 
 Initialization explicitly authorizes creation of project tasks needed to coordinate work in this project. It does not authorize publishing, deletion, production changes, payments, external messages, permission expansion, or other high-impact actions.
 
@@ -32,6 +60,8 @@ Initialization explicitly authorizes creation of project tasks needed to coordin
 - An unconfirmed final goal permits only goal-clarifying read-only discovery, not implementation.
 
 Read [references/coordination-protocol.md](references/coordination-protocol.md) before creating durable tasks or resolving conflicting reports. Read [references/state-schema.md](references/state-schema.md) before updating project state files programmatically.
+
+When `visual_selection_gate.enabled` is true, read [references/visual-selection-governance.md](references/visual-selection-governance.md) before preparing options, changing visual state, or relaying a decision. When it is false, ordinary product-decision and approval boundaries still apply, but this specialized central preview gate does not.
 
 ## Delegate durable work
 
@@ -102,7 +132,7 @@ When `subagent_meetings_enabled` is true, any durable task may summon up to `max
 
 ## Optional unanswered-Chief reminders
 
-Unanswered-Chief reminders are one personal, cross-project service rather than one automation per project. Configure them only when the user asks to enable, disable, or change reminders. Read [references/reminder-policy.md](references/reminder-policy.md), then maintain the personal policy file, one pinned TODO thread, and the minimum non-duplicated set of thread heartbeat automations.
+Unanswered-Chief reminders are one personal, cross-project service rather than one automation per project. Configure them only when the user asks to enable, disable, or change reminders and the preference profile allows them. Read [references/reminder-policy.md](references/reminder-policy.md), then maintain the personal policy file, one pinned TODO thread, and the minimum non-duplicated set of thread heartbeat automations. Saving `reminders.enabled: true` does not itself authorize creating an automation; follow the normal reminder workflow.
 
 When disabled, pause every automation recorded by the policy so no scheduled run or notification occurs. When enabled, compile the user's timezone, inclusive daytime window, interval, and additional times into the exact schedule. Each run rebuilds a full snapshot and includes only unresolved explicit requests for approval, confirmation, decision, information, safety, or permissions. New Chief requests that require a reply end with `USER_ACTION_REQUIRED: <request_id>`; after a resolving user reply, the Chief records `USER_ACTION_RESOLVED: <request_id>`. The scanner still recognizes older unmarked requests. A user opening or reading a Chief does not clear an item; a later user reply that resolves, supersedes, or rejects the request does. The TODO task is read-only and never replies to a Chief or approves anything.
 
@@ -123,3 +153,15 @@ Distinguish:
 - **下一步**: owner, action, dependency, and acceptance condition.
 
 Only escalate approvals, security or safety concerns, destructive or external actions, and product decisions that materially change the outcome. Keep ordinary coordination inside the project hierarchy.
+
+## Add optional American-English coaching
+
+Only when `american_english_coaching.enabled` is true, end complete user-facing replies with the enabled sections below. Include casual chat and ordinary status updates only when `include_casual_chat` is true:
+
+- `书面` gives a natural American-English version suitable for email, documentation, or a formal decision.
+- `口语` gives the way an American speaker would naturally say it in conversation.
+- `地道用法` highlights 1–3 useful words, collocations, sentence patterns, or tone choices and briefly explains why they sound native.
+
+Translate intent rather than Chinese word order. If the operator writes in English, polish it instead of translating it. Keep the note concise and never delay or replace the actual project response. Tool-progress commentary does not need the repeated note.
+
+When `audio_playback.enabled` is also true, invoke `scripts/render_english_audio.py` once for each enabled `written` or `spoken` sentence. Attach every returned `ready` path separately using the host's local-audio rendering syntax, for example `![Written audio](/absolute/path/written-hash.m4a)`. Never combine the two clips. A `text_only` result preserves the textual note, does not block the main work, and must not be redirected to a different storage root.

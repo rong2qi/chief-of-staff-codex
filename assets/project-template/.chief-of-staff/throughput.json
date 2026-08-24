@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "execution_mode": "effective_throughput",
+  "max_parallel_phase_lanes": 2,
+  "no_evidence_checkpoint_limit": 2,
+  "consecutive_no_evidence_checkpoints": 0,
+  "active_phase_lanes": [],
+  "last_evidence_checkpoint": null
+}

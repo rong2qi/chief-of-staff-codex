@@ -37,6 +37,13 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 - 汇报明确区分已验证事实、推断、待确认项、风险和下一步。
 - 删除、生产变更、发布、支付、外发消息和扩大权限前必须取得用户明确授权。
 - 使用项目文件保存协调状态，并为未来外置控制平面预留适配接口。
+- 默认采用 `effective_throughput`：最多两个互不冲突的阶段并行；每个检查点都要产生可验证证据，连续两个检查点无证据即停止并自查。
+- 已确认、可验收且没有人工审批门的目标才可使用 `/goal`；长期目标不会绕过确认或高影响操作的单独审批。
+- 创意总监在北京时间每天 11:00 和 20:00 执行有证据的扫描，而非空转目标：只读其他项目、不发消息、不改文件、最多一条待定建议；偏好证据分为 `explicit`、`confirmed_pattern` 和 `hypothesis`。
+- 云部署目标和证据登记在独立 deployment registry 中；登记不是授权，生产部署、生产变更、发布或回滚仍须在操作前取得明确用户批准。
+- 可选的视觉人工门可要求项目先提供可点击预览，由指定的置顶审阅任务统一收纳；操作者明确选择前，未选方案不得成为最终版本。
+- 可选的暂停标题策略会在操作者明确暂停时添加 `已暂停｜`，明确恢复时移除。空闲、阻塞或等待批复不会被误判为暂停。
+- 可选的美式英语教学可覆盖工作消息和闲聊，分别提供书面、口语、地道用法及两个独立音频片段。
 - 可选启用一个跨项目、置顶的 Chief 待回复 TODO，并按个人策略定时提醒；关闭后完全不运行提醒。
 
 ### 环境要求
@@ -55,6 +62,47 @@ cp -R chief-of-staff/context-handoff ~/.codex/skills/context-handoff
 ```
 
 安装后新建一个 Codex 任务。Codex 通常会自动检测 Skill 变化；如果没有出现，请重启 Codex。
+
+### 首次偏好配置
+
+`git clone` 和复制 Skill 本身不会运行任何脚本，也不会立刻弹窗。首次输入以下任一命令时才会开始配置：
+
+```text
+$chief-of-staff 配置个人偏好
+$chief-of-staff 初始化这个项目
+```
+
+如果还没有偏好档案，支持原生阻塞式选择面板的 Codex 客户端会先显示一张三问表单：
+
+1. 预设：`核心 Chief`、`操作者主导 + 双语教学` 或 `自定义`；
+2. 称呼：中性、`妈妈` 或自定义；
+3. 数据位置：默认个人目录、外置磁盘/自定义绝对路径，或仅当前项目。
+
+Codex 随后展示将启用的规则、写入位置和降级行为，并只在用户选择“应用”后写入。选择“自定义”时，第二张表单可以分别控制视觉确认、闲聊英语教学、书面/口语/地道用法、两类音频、声音与语速、暂停标题、TODO 提醒及其周期。没有原生面板的 CLI 或 IDE 会使用同样问题进行简短对话，不会伪造弹窗。
+
+也可完全跳过交互：
+
+```bash
+python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
+  --preset operator-controlled-bilingual \
+  --scope global \
+  --salutation 妈妈 \
+  --voice Samantha \
+  --data-root /Volumes/ExternalDrive/chief-data
+```
+
+自定义数据目录必须已经存在；磁盘缺失或权限不足时配置会失败，不会回退写入本机。全局偏好只配置一次，未来项目自动继承；输入 `$chief-of-staff 重新配置个人偏好` 可再次打开向导。公共版默认 `core`，所有个人化规则关闭。
+
+统一配置文件支持以下开关：
+
+- `visual_selection_gate.enabled`
+- `american_english_coaching.enabled` 与 `include_casual_chat`
+- `audio_playback.enabled`、`clips`、`voice`、`rate` 与 `storage_root`
+- `operator_salutation.enabled/value`
+- `paused_title_prefix.enabled/value`
+- `reminders.enabled`、时区、日间窗口、周期与额外提醒时间
+
+配置器只更新 `AGENTS.md` 中带标记的受管片段，不覆盖其他规则。逐句音频使用文本、类型、声音和语速的内容哈希复用 `.m4a` 文件；书面和口语分别生成。若外置存储、macOS `say` 或所选声音不可用，只返回文字，不写入其他目录。Codex 内置 Voice 仍用于实时语音对话，逐句播放器属于 Skill 的独立离线附件功能。
 
 ### 使用
 
@@ -79,9 +127,14 @@ cp -R chief-of-staff/context-handoff ~/.codex/skills/context-handoff
   "pin_primary_task": true,
   "report_approval_required": true,
   "require_goal_confirmation": true,
+  "durable_goal_enabled": true,
+  "execution_mode": "effective_throughput",
+  "max_parallel_phase_lanes": 2,
+  "no_evidence_checkpoint_limit": 2,
   "max_management_depth": 3,
   "auto_advance_low_impact": true,
   "proactive_follow_up": true,
+  "visual_selection_gate": "disabled",
   "durable_child_scope": "same_project",
   "archive_completed_child_tasks": true,
   "projectless_child_policy": "temporary_subagents",
@@ -112,7 +165,8 @@ AGENTS.md
 ├── approval-queue.json
 ├── decisions.md
 ├── status.md
-└── control-plane.json
+├── control-plane.json
+└── throughput.json
 ```
 
 初始化器支持重复运行。它会保留可变的项目状态；如果已有的受管说明或配置与模板冲突，则会在写入任何文件前停止。
@@ -155,9 +209,9 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 ### 待回复 TODO 与提醒（可选）
 
-提醒是个人级、跨项目服务，不会让每个 Chief 重复创建一套自动化。开启后，Skill 创建或复用一个置顶的 `TODO｜待回复 Chief 汇总` 对话，只收集 Chief 明确等待你审批、确认、决策、补充信息或权限选择、且尚无后续用户回复的事项。仅仅打开或阅读对话不会被误判为已回复。
+提醒是个人级、跨项目服务，不会让每个 Chief 重复创建一套自动化。只有统一偏好中的 `reminders.enabled` 为 `true` 时，Skill 才创建或复用一个置顶的 `TODO｜待回复 Chief 汇总` 对话；它只收集 Chief 明确等待你审批、确认、决策、补充信息或权限选择、且尚无后续用户回复的事项。仅仅打开或阅读对话不会被误判为已回复。
 
-默认策略采用北京时间 09:00–18:00 每小时一次（包含 09:00 和 18:00），并在 22:00 再提醒一次。个人策略文件位于 `~/.codex/chief-of-staff/reminders.json`，可以调整时区、日间窗口、间隔和额外时间。关闭时会暂停该策略登记的全部自动化，因此不会运行扫描，也不会发送通知；保留 TODO 对话和 ID 便于以后恢复。
+示例预设采用北京时间 09:00–18:00 每小时一次（包含 09:00 和 18:00），并在 22:00 再提醒一次；时区、日间窗口、间隔和额外时间都可调整。保存偏好不会自行创建自动化，仍需 Skill 通过 Codex 的定时任务接口建立或更新。关闭时会暂停该策略登记的全部自动化，因此不会运行扫描，也不会发送通知；保留 TODO 对话和 ID 便于以后恢复。
 
 ### 汇报批复机制
 
@@ -177,6 +231,14 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 未完成项目的 Chief 汇报固定包含最终目标、当前阶段、已验证进展、正在工作的岗位、距最终交付的差距和下一检查点。只有全部最终验收标准都有证据时才能宣布项目完成。
 
+### 有效吞吐、创意与部署
+
+`effective_throughput` 以已完成且有证据的验收为中心。默认至多两个无共享写入面的独立阶段并行；每个检查点必须关联具体验收证据，连续两个检查点无证据时，Chief 停止该线路并自查目标、范围、依赖、写入权、验收方法和阻塞原因。
+
+只有最终目标已确认、验收可验证且没有待处理人工门时才可使用 `/goal`。创意总监在北京时间每天 11:00 和 20:00 执行有证据的扫描，最多保留一条待定建议；只读其他项目，不发消息、不改文件。偏好证据分为明确偏好、一致模式和单次假设；新项目建议至少需要两个不同项目的明确偏好或一致模式证据，并包含目标用户、最小验证、成功阈值和停止条件。
+
+当云部署工作被明确纳入范围时，应在独立 registry 中登记目标与证据；该记录是库存与审计记录而非执行凭证。生产部署、生产变更、发布或回滚均须在操作前单独取得明确用户批准。
+
 ### 全局上下文无损接续
 
 仓库同时提供 `context-handoff` Skill。它只使用最新输入 token 与模型上下文窗口的比值：75%刷新检查点，85%在安全边界创建 `原对话名｜续N`，95%进入紧急迁移。累计 token 和账户限额不会被误当成上下文占用。
@@ -185,7 +247,7 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 ### 当前限制
 
-- 第一版只使用 Codex 原生能力，不修改 Codex 客户端界面。
+- 第一版不修改 Codex 客户端界面；只在宿主已提供阻塞式选择面板时调用它，否则使用对话或 CLI 配置。
 - 关闭 Codex 可能会停止正在运行的任务；持久状态保存在项目文件和 Codex 任务历史中。
 - 当前不安装 AWS CLI Agent Orchestrator 等外置控制台；`control-plane.json` 仅预留未来适配入口。
 
@@ -215,7 +277,14 @@ Each durable task can use installed Skills automatically and can summon temporar
 - One writer per file, external record, branch, deployment target, or deliverable.
 - Structured handoffs that separate verified facts, inference, open questions, risks, and next steps.
 - Explicit user approval before deletion, production changes, releases, payments, external messages, or permission expansion.
+- An optional pause-title policy adds `已暂停｜` only after an explicit pause and removes it after an explicit resume; idle, blocked, and awaiting-user states do not trigger it.
+- Optional American-English coaching can cover both work and casual chat, with separate written, spoken, idiom, and audio outputs.
 - Persistent project state with a reserved adapter seam for a future external control plane.
+- Effective throughput: at most two independent phase lanes, checkpoint evidence, and a stop/self-check after two evidence-free checkpoints.
+- `/goal` only after a confirmed, testable goal with no human gate; durable goals never bypass protected-action approvals.
+- Evidence-backed Creative Director scans at 11:00 and 20:00 Beijing time, with no more than one pending recommendation and preference evidence classified as `explicit`, `confirmed_pattern`, or `hypothesis`.
+- An independent cloud deployment registry; a registry record never authorizes production work.
+- An optional human visual-selection gate: projects submit clickable previews to a configured review hub, and no unselected option may become the final version.
 - An optional pinned, cross-project unanswered-Chief TODO with configurable reminders; disabling it stops all reminder runs.
 
 ### Requirements
@@ -234,6 +303,38 @@ cp -R chief-of-staff/context-handoff ~/.codex/skills/context-handoff
 ```
 
 Open a new Codex task after installation. Codex normally detects Skill changes automatically; restart it if the Skill does not appear.
+
+### First-use preference setup
+
+Cloning and copying the Skill never runs setup by itself. Setup begins only when you enter one of these prompts:
+
+```text
+$chief-of-staff configure my preferences
+$chief-of-staff initialize this project
+```
+
+If no profile exists, a Codex host with a native blocking selection panel presents three questions in one form:
+
+1. Preset: `Core Chief`, `Operator-controlled + bilingual coaching`, or `Custom`.
+2. Salutation: neutral, `妈妈`, or a custom value.
+3. Data location: the default personal directory, an external/custom absolute path, or the current project only.
+
+Codex previews the enabled rules, destination, and fallback behavior, then writes only after a final Apply confirmation. Custom mode opens a second form for visual approval, casual-chat coaching, written/spoken/idiom notes, both audio clips, voice and rate, pause-title behavior, TODO reminders, and reminder cadence. A CLI or IDE without the native panel asks the same questions conversationally; it does not simulate a pop-up.
+
+For deterministic non-interactive setup:
+
+```bash
+python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
+  --preset operator-controlled-bilingual \
+  --scope global \
+  --salutation Operator \
+  --voice Samantha \
+  --data-root /Volumes/ExternalDrive/chief-data
+```
+
+A custom data root must already exist. A missing or unwritable external disk fails safely with no local fallback. Global preferences are configured once and inherited by future projects; use `$chief-of-staff reconfigure my preferences` to run onboarding again. The public `core` preset leaves every personal rule disabled.
+
+The unified profile controls visual selection, American-English coaching and casual-chat coverage, written/spoken audio, voice, rate, salutation, pause-title prefix, and reminder schedule. The configurator replaces only a marked managed block in `AGENTS.md`. Audio clips are separate content-addressed `.m4a` files, so repeated text reuses the same file. Missing storage, tools, or voice support returns text only and never writes elsewhere. Built-in Codex Voice remains the realtime conversation mode; these clips are separate offline attachments.
 
 ### Use
 
@@ -261,6 +362,7 @@ When no project name is supplied, the initializer uses the project root director
   "max_management_depth": 3,
   "auto_advance_low_impact": true,
   "proactive_follow_up": true,
+  "visual_selection_gate": "disabled",
   "durable_child_scope": "same_project",
   "archive_completed_child_tasks": true,
   "projectless_child_policy": "temporary_subagents",
@@ -291,7 +393,8 @@ AGENTS.md
 ├── approval-queue.json
 ├── decisions.md
 ├── status.md
-└── control-plane.json
+├── control-plane.json
+└── throughput.json
 ```
 
 The initializer is idempotent. It preserves mutable project state and stops without writing when a managed instruction or configuration file conflicts with the template.
@@ -334,9 +437,9 @@ Every durable role may convene a temporary subagent meeting with up to three par
 
 ### Unanswered-Chief TODO and reminders (optional)
 
-Reminders are one personal, cross-project service rather than one automation per Chief. When enabled, the Skill creates or reuses a pinned `TODO｜待回复 Chief 汇总` thread. It includes only Chiefs that explicitly await approval, confirmation, a decision, more information, or a permission choice and have no later resolving user reply. Merely opening or reading a thread does not clear an item.
+Reminders are one personal, cross-project service rather than one automation per Chief. Only when `reminders.enabled` is `true` does the Skill create or reuse a pinned `TODO｜待回复 Chief 汇总` thread. It includes only Chiefs that explicitly await approval, confirmation, a decision, more information, or a permission choice and have no later resolving user reply. Merely opening or reading a thread does not clear an item.
 
-The default policy runs every Beijing-time hour from 09:00 through 18:00 inclusive, plus 22:00. The personal policy lives at `~/.codex/chief-of-staff/reminders.json`; its timezone, daytime window, interval, and additional times are configurable. Disabling pauses every automation recorded by the policy, producing no scan runs or notifications while preserving the TODO thread and identifiers for later re-enablement.
+The example preset uses every Beijing-time hour from 09:00 through 18:00 inclusive, plus 22:00; timezone, daytime window, interval, and additional times are configurable. Saving a preference does not create an automation by itself: the Skill still uses Codex's scheduled-task interface to create or update it. Disabling pauses every automation recorded by the policy, producing no scan runs or notifications while preserving the TODO thread and identifiers for later re-enablement.
 
 ### Report approval workflow
 
@@ -364,7 +467,7 @@ Project bundles live in `.codex/context-migrations/`; projectless bundles live i
 
 ### Current limits
 
-- Version 1 uses native Codex capabilities and does not modify the Codex client UI.
+- Version 1 does not modify the Codex client UI. It uses a native blocking selection panel only when the host already provides one, with conversational and CLI fallbacks.
 - Closing Codex may stop active work; persistent coordination state is stored in project files and Codex task history.
 - An external control plane such as AWS CLI Agent Orchestrator is not installed. `control-plane.json` reserves a future integration point.
 
@@ -372,8 +475,13 @@ Project bundles live in `.codex/context-migrations/`; projectless bundles live i
 
 - `SKILL.md`: Skill routing and operating instructions / Skill 路由与操作说明。
 - `scripts/init_project.py`: safe project initializer and validator / 安全的项目初始化与校验脚本。
+- `scripts/configure_preferences.py`: idempotent preference onboarding / 幂等偏好配置器。
+- `scripts/render_english_audio.py`: content-addressed written/spoken audio / 书面与口语逐句音频。
 - `assets/project-template/`: generated project contract and agent profiles / 项目契约与角色配置模板。
+- `assets/operator-preferences.example.json`: privacy-safe core defaults / 隐私安全的核心默认偏好。
+- `assets/presets/`: opt-in preference presets / 可主动启用的偏好预设。
 - `references/`: coordination protocol and persistent state schema / 协调协议与持久状态结构。
+- `references/operator-preferences.md`: onboarding, schema, and privacy behavior / 首次配置、结构与隐私行为。
 - `assets/reminder-policy.example.json`: optional personal reminder policy example / 可选的个人提醒策略示例。
 - `agents/openai.yaml`: Codex UI metadata and implicit invocation policy / Codex 界面元数据与自动调用策略。
 - `context-handoff/`: global context checkpoint and verified rollover Skill / 全局上下文检查点与校验接续 Skill。

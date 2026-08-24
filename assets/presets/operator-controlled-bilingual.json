@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "preset": "operator-controlled-bilingual",
+  "scope": "global",
+  "visual_selection_gate": {
+    "enabled": true,
+    "review_hub_title": "一人之下"
+  },
+  "american_english_coaching": {
+    "enabled": true,
+    "include_casual_chat": true,
+    "written": true,
+    "spoken": true,
+    "idiom_notes": true
+  },
+  "audio_playback": {
+    "enabled": true,
+    "clips": [
+      "written",
+      "spoken"
+    ],
+    "provider": "auto",
+    "voice": null,
+    "locale": "en-US",
+    "rate": 175,
+    "storage_root": null,
+    "unavailable_behavior": "text_only"
+  },
+  "operator_salutation": {
+    "enabled": false,
+    "value": null
+  },
+  "paused_title_prefix": {
+    "enabled": true,
+    "value": "已暂停｜"
+  },
+  "reminders": {
+    "enabled": false,
+    "timezone": "Asia/Shanghai",
+    "daytime_window": {
+      "start": "09:00",
+      "end": "18:00",
+      "interval_minutes": 60,
+      "include_start": true,
+      "include_end": true
+    },
+    "additional_times": [
+      "22:00"
+    ]
+  }
+}

@@ -7,6 +7,9 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Optional
+
+from preference_lib import PreferenceError, read_json, require_valid, validate_preferences
 
 try:
     import tomllib
@@ -23,21 +26,31 @@ MUTABLE_STATE = {
     Path(".chief-of-staff/decisions.md"),
     Path(".chief-of-staff/status.md"),
     Path(".chief-of-staff/control-plane.json"),
+    Path(".chief-of-staff/throughput.json"),
 }
 
 
-def render(source: Path, project_name: str) -> bytes:
+def render(source: Path, project_name: str, preferences: Optional[dict] = None) -> bytes:
     data = source.read_bytes()
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
         return data
     json_name = json.dumps(project_name, ensure_ascii=False)[1:-1]
-    return (
+    rendered = (
         text.replace("{{PROJECT_NAME_JSON}}", json_name)
         .replace("{{PROJECT_NAME}}", project_name)
-        .encode("utf-8")
     )
+    if source.relative_to(TEMPLATE_ROOT) == Path(".chief-of-staff/project.json"):
+        project = json.loads(rendered)
+        if preferences is not None:
+            visual = preferences["visual_selection_gate"]
+            project["visual_selection_gate"] = (
+                "operator_after_clickable_preview" if visual["enabled"] else "disabled"
+            )
+            project["visual_review_hub_title"] = visual["review_hub_title"]
+        return encoded_json(project)
+    return rendered.encode("utf-8")
 
 
 def template_files() -> list[tuple[Path, Path]]:
@@ -103,6 +116,21 @@ def migrate_mutable_state(relative: Path, value: object) -> tuple[object, bool]:
                 request["request_kind"] = "report_review"
                 changed = True
 
+    if relative.name == "throughput.json":
+        defaults = {
+            "schema_version": 1,
+            "execution_mode": "effective_throughput",
+            "max_parallel_phase_lanes": 2,
+            "no_evidence_checkpoint_limit": 2,
+            "consecutive_no_evidence_checkpoints": 0,
+            "active_phase_lanes": [],
+            "last_evidence_checkpoint": None,
+        }
+        for key, default in defaults.items():
+            if key not in value:
+                value[key] = default
+                changed = True
+
     return value, changed
 
 
@@ -125,6 +153,9 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 "schema_version", "project_name", "primary_task_title", "control_plane",
                 "pin_primary_task", "report_approval_required", "task_title_pattern",
                 "require_goal_confirmation", "max_management_depth",
+                "durable_goal_enabled", "execution_mode", "max_parallel_phase_lanes",
+                "no_evidence_checkpoint_limit", "visual_selection_gate",
+                "visual_review_hub_title",
                 "auto_advance_low_impact", "proactive_follow_up", "approval_required",
                 "durable_child_scope", "archive_completed_child_tasks",
                 "projectless_child_policy",
@@ -134,7 +165,10 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             relative,
             errors,
         )
-        for key in ("project_name", "primary_task_title", "control_plane", "task_title_pattern"):
+        for key in (
+            "project_name", "primary_task_title", "control_plane", "task_title_pattern",
+            "visual_selection_gate", "visual_review_hub_title",
+        ):
             if key in value and not isinstance(value[key], str):
                 errors.append(f"{key} in {relative} must be a string")
         project_name = value.get("project_name")
@@ -147,6 +181,7 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 )
         for key in (
             "pin_primary_task", "report_approval_required", "require_goal_confirmation",
+            "durable_goal_enabled",
             "auto_advance_low_impact", "proactive_follow_up",
             "archive_completed_child_tasks",
             "peer_coordination_enabled", "subagent_meetings_enabled",
@@ -156,6 +191,25 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
         max_depth = value.get("max_management_depth")
         if not isinstance(max_depth, int) or isinstance(max_depth, bool) or max_depth < 1:
             errors.append(f"max_management_depth in {relative} must be a positive integer")
+        if value.get("execution_mode") != "effective_throughput":
+            errors.append(f"execution_mode in {relative} must be 'effective_throughput'")
+        if value.get("visual_selection_gate") not in {
+            "disabled", "operator_after_clickable_preview"
+        }:
+            errors.append(
+                f"visual_selection_gate in {relative} must be "
+                "'disabled' or 'operator_after_clickable_preview'"
+            )
+        if not isinstance(value.get("visual_review_hub_title"), str) or not value.get(
+            "visual_review_hub_title"
+        ):
+            errors.append(
+                f"visual_review_hub_title in {relative} must be a non-empty string"
+            )
+        for key in ("max_parallel_phase_lanes", "no_evidence_checkpoint_limit"):
+            number = value.get(key)
+            if not isinstance(number, int) or isinstance(number, bool) or number < 1:
+                errors.append(f"{key} in {relative} must be a positive integer")
         if value.get("durable_child_scope") != "same_project":
             errors.append(f"durable_child_scope in {relative} must be 'same_project'")
         if value.get("projectless_child_policy") != "temporary_subagents":
@@ -465,6 +519,28 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
         if "adapter_config" in value and not isinstance(value["adapter_config"], dict):
             errors.append(f"adapter_config in {relative} must be an object")
 
+    elif relative.name == "throughput.json":
+        require_keys(value, {
+            "schema_version", "execution_mode", "max_parallel_phase_lanes",
+            "no_evidence_checkpoint_limit", "consecutive_no_evidence_checkpoints",
+            "active_phase_lanes", "last_evidence_checkpoint",
+        }, relative, errors)
+        if value.get("execution_mode") != "effective_throughput":
+            errors.append(f"execution_mode in {relative} must be 'effective_throughput'")
+        for key in ("max_parallel_phase_lanes", "no_evidence_checkpoint_limit"):
+            number = value.get(key)
+            if not isinstance(number, int) or isinstance(number, bool) or number < 1:
+                errors.append(f"{key} in {relative} must be a positive integer")
+        count = value.get("consecutive_no_evidence_checkpoints")
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            errors.append(f"consecutive_no_evidence_checkpoints in {relative} must be a non-negative integer")
+        lanes = value.get("active_phase_lanes")
+        if not isinstance(lanes, list) or not all(isinstance(item, str) for item in lanes):
+            errors.append(f"active_phase_lanes in {relative} must be an array of strings")
+        checkpoint = value.get("last_evidence_checkpoint")
+        if checkpoint is not None and not isinstance(checkpoint, str):
+            errors.append(f"last_evidence_checkpoint in {relative} must be a string or null")
+
 
 def validate(target: Path) -> list[str]:
     errors: list[str] = []
@@ -479,6 +555,7 @@ def validate(target: Path) -> list[str]:
         Path(".chief-of-staff/task-registry.json"),
         Path(".chief-of-staff/approval-queue.json"),
         Path(".chief-of-staff/control-plane.json"),
+        Path(".chief-of-staff/throughput.json"),
     ):
         path = target / relative
         if path.is_file():
@@ -511,8 +588,26 @@ def validate(target: Path) -> list[str]:
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             pass
 
+    preferences_path = target / ".chief-of-staff" / "preferences.json"
+    if preferences_path.is_file():
+        try:
+            preferences = read_json(preferences_path)
+            errors.extend(
+                f"invalid preferences.json: {error}"
+                for error in validate_preferences(preferences)
+            )
+            if preferences.get("scope") != "project":
+                errors.append("project preferences.json requires scope project")
+        except PreferenceError as exc:
+            errors.append(str(exc))
+
     toml_files = [target / ".codex" / "config.toml"]
-    toml_files.extend(sorted((target / ".codex" / "agents").glob("*.toml")))
+    # FAT/exFAT volumes may expose macOS AppleDouble sidecars such as
+    # `._scout.toml`; they are metadata, not Codex agent profiles.
+    toml_files.extend(
+        path for path in sorted((target / ".codex" / "agents").glob("*.toml"))
+        if not path.name.startswith("._")
+    )
     for path in toml_files:
         if path.is_file():
             if tomllib is None:
@@ -529,14 +624,14 @@ def validate(target: Path) -> list[str]:
     return errors
 
 
-def initialize(target: Path, project_name: str) -> int:
+def initialize(target: Path, project_name: str, preferences: Optional[dict] = None) -> int:
     files = template_files()
     conflicts: list[Path] = []
     planned: list[tuple[Path, bytes]] = []
 
     for source, relative in files:
         destination = target / relative
-        expected = render(source, project_name)
+        expected = render(source, project_name, preferences)
         cursor = target
         unsafe_parent = False
         for part in relative.parts[:-1]:
@@ -563,12 +658,50 @@ def initialize(target: Path, project_name: str) -> int:
                         conflicts.append(relative)
                         continue
                 continue
+            if relative == Path(".codex/config.toml"):
+                try:
+                    existing_config = destination.read_text(encoding="utf-8")
+                    if tomllib is None:
+                        if "[features]\ngoals = true" in existing_config:
+                            continue
+                        if "[features]" not in existing_config:
+                            data = existing_config.rstrip() + "\n\n[features]\ngoals = true\n"
+                            planned.append((destination, data.encode("utf-8")))
+                            continue
+                        raise ValueError("existing features policy conflicts")
+                    parsed_config = tomllib.loads(existing_config) if tomllib is not None else {}
+                    features = parsed_config.get("features") if isinstance(parsed_config, dict) else None
+                    if features is None:
+                        data = existing_config.rstrip() + "\n\n[features]\ngoals = true\n"
+                        planned.append((destination, data.encode("utf-8")))
+                        continue
+                    if isinstance(features, dict) and features.get("goals") is True:
+                        continue
+                except (OSError, UnicodeDecodeError, AttributeError, ValueError):
+                    pass
             if destination.read_bytes() == expected:
                 continue
             if relative == Path(".chief-of-staff/project.json"):
                 try:
                     existing_project = json.loads(destination.read_text(encoding="utf-8"))
                     expected_project = json.loads(expected.decode("utf-8"))
+                    # Upgrade an older managed project by adding only missing defaults.
+                    upgraded_project = dict(existing_project)
+                    project_changed = False
+                    for key in (
+                        "durable_goal_enabled", "execution_mode", "max_parallel_phase_lanes",
+                        "no_evidence_checkpoint_limit", "visual_selection_gate",
+                        "visual_review_hub_title",
+                    ):
+                        if key not in upgraded_project:
+                            upgraded_project[key] = expected_project[key]
+                            project_changed = True
+                    if project_changed:
+                        state_errors: list[str] = []
+                        validate_state(relative, upgraded_project, state_errors)
+                        if not state_errors:
+                            planned.append((destination, encoded_json(upgraded_project)))
+                            continue
                     previous_peer_coordination = dict(expected_project)
                     for key in (
                         "peer_coordination_enabled", "peer_contact_policy",
@@ -584,6 +717,9 @@ def initialize(target: Path, project_name: str) -> int:
                     previous_dynamic = dict(previous_project_scoping)
                     for key in (
                         "require_goal_confirmation", "max_management_depth",
+                        "durable_goal_enabled", "execution_mode", "max_parallel_phase_lanes",
+                        "no_evidence_checkpoint_limit", "visual_selection_gate",
+                        "visual_review_hub_title",
                         "auto_advance_low_impact", "proactive_follow_up",
                     ):
                         previous_dynamic.pop(key, None)
@@ -639,6 +775,17 @@ def initialize(target: Path, project_name: str) -> int:
         else:
             planned.append((destination, expected))
 
+    if preferences is not None:
+        preference_destination = target / ".chief-of-staff" / "preferences.json"
+        preference_expected = encoded_json(preferences)
+        if preference_destination.is_symlink() or preference_destination.parent.is_symlink():
+            conflicts.append(Path(".chief-of-staff/preferences.json"))
+        elif preference_destination.exists():
+            if preference_destination.read_bytes() != preference_expected:
+                conflicts.append(Path(".chief-of-staff/preferences.json"))
+        else:
+            planned.append((preference_destination, preference_expected))
+
     if conflicts:
         print("Chief of Staff initialization stopped; existing files differ:", file=sys.stderr)
         for relative in conflicts:
@@ -667,6 +814,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", default=".", help="Project root; defaults to the current directory")
     parser.add_argument("--project-name", help="Display name; defaults to the target directory name")
+    parser.add_argument(
+        "--preferences",
+        help="Validated project-scoped optional preference profile",
+    )
     parser.add_argument("--check", action="store_true", help="Validate an initialized project without writing")
     args = parser.parse_args()
 
@@ -681,6 +832,20 @@ def main() -> int:
         print("ERROR: project name must be a non-empty single line", file=sys.stderr)
         return 2
 
+    preferences = None
+    if args.preferences:
+        try:
+            preference_path = Path(args.preferences).expanduser()
+            if not preference_path.is_absolute():
+                raise PreferenceError("--preferences must be an absolute path")
+            preferences = read_json(preference_path.resolve())
+            require_valid(preferences)
+            if preferences.get("scope") != "project":
+                raise PreferenceError("--preferences requires scope project")
+        except PreferenceError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+
     if args.check:
         errors = validate(target)
         if errors:
@@ -689,7 +854,7 @@ def main() -> int:
             return 1
         print(f"Chief of Staff project is valid: {target}")
         return 0
-    return initialize(target, project_name)
+    return initialize(target, project_name, preferences)
 
 
 if __name__ == "__main__":
