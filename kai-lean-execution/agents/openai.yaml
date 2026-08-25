@@ -1,0 +1,6 @@
+interface:
+  display_name: "KAI Lean Execution"
+  short_description: "Lean, evidence-backed execution with lower context overhead"
+  default_prompt: "Use $kai-lean-execution to complete this task with minimal context overhead and full acceptance evidence."
+policy:
+  allow_implicit_invocation: false

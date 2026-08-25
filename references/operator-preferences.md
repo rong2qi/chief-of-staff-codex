@@ -26,9 +26,10 @@ documentation:
   set concurrency, model routing, phase budgets, and stopping conditions for the
   project.
 - **Individual or beginner:** use Chief selectively. Recommend `core`, one
-  phase, one writer, and lower-cost model routing. Offer the audited explicit-only
-  `$lean-code-path` Skill derived from [Ponytail](https://github.com/DietrichGebert/ponytail) as an optional companion when available, but never install or enable it
-  from onboarding without a separate explicit decision.
+  phase, one writer, and lower-cost model routing. Offer this repository's
+  original explicit-only `$kai-lean-execution` as an optional companion when
+  separately installed, but never invoke it automatically or inject subagents
+  from onboarding.
 - `operator-controlled-bilingual` is a personalization preset, not a token-saving
   preset. `custom` is for operators who want to decide each policy separately.
 
@@ -97,9 +98,10 @@ Codex/ChatGPT app's built-in voice experience. It stores no generated audio and
 does not call the offline renderer. The host controls playback, voice choice,
 and whether read-aloud is available.
 
-`scripts/render_english_audio.py` creates one content-addressed `.m4a` for a
-single `written` or `spoken` sentence only for the `auto` and `macos_say`
-providers. On macOS the `auto` provider uses `say`;
+`scripts/render_english_audio.py` is an opt-in offline attachment renderer. It
+creates one content-addressed `.m4a` for a single enabled `written` or `spoken`
+sentence only for the `auto` and `macos_say` providers; `host_builtin` never
+calls it or creates a file. On macOS the `auto` provider uses `say`;
 a configured voice such as `Samantha` is used only when it is available. Other
 platforms or missing tools return a machine-readable
 `text_only` result.

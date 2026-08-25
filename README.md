@@ -14,15 +14,15 @@
 
 ### 它能做什么
 
-Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。主任务会根据项目名自动命名为 `Chief of <项目名>`，例如 `Chief of 个人web`，并在初始化后自动置顶。你只需要和这个主任务交流；它负责拆解目标、创建需要长期独立上下文的任务、收集结构化汇报，并向你提供最终总结。
+Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。主任务会根据项目名自动命名为 `Chief of <项目名>`，例如 `Chief of 个人web`，并在初始化后尝试置顶且独立回查 `pinnedThreads`。你只需要和这个主任务交流；它负责拆解目标、创建需要长期独立上下文的任务、收集结构化汇报，并向你提供最终总结。
 
 每个长期任务可以根据工作内容自动选择已安装的 Skill，也可以召集临时 subagents 完成范围明确的调研、评审、测试或讨论。
 
 ### 核心能力
 
 - 每个项目拥有可区分的主任务名称：`Chief of <项目名>`。
-- 主任务在初始化完成后自动置顶。
-- 子岗位提交里程碑或最终汇报后进入待人工批复状态；Chief 会批量收集同时到达的汇报，避免遗漏。
+- 主任务在初始化后尝试置顶，且只有精确 task ID 出现在新的 `pinnedThreads` 查询中才报告成功。
+- 默认采用 `exception_only`：Chief 验收普通岗位里程碑和最终交接，只有列明例外与项目最终完成才进入操作者批复；Chief 会批量收集同时到达的汇报，避免遗漏。
 - Chief 必须先与你确认最终目标、交付物和验收标准；未达成最终验收前持续分阶段推进。
 - 默认三层管理结构，阶段负责人可以管理执行岗位；增加第四层前必须申请。
 - 用户只与一个统一负责的主任务交互。
@@ -43,7 +43,7 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 - 云部署目标和证据登记在独立 deployment registry 中；登记不是授权，生产部署、生产变更、发布或回滚仍须在操作前取得明确用户批准。
 - 可选的视觉人工门要求项目先提供可点击预览，并只提交给置顶的 `Chief of Creative Direction｜创意总监`；项目 Chief、岗位、“一人之下”和 TODO 不得复制同一视觉请求。操作者明确选择前，未选方案不得成为最终版本。
 - 可选的暂停标题策略会在操作者明确暂停时添加 `已暂停｜`，明确恢复时移除。空闲、阻塞或等待批复不会被误判为暂停。
-- 可选的美式英语教学可覆盖工作消息和闲聊，分别提供书面、口语、地道用法及两个独立音频片段。
+- 可选的美式英语教学可覆盖工作消息和闲聊，并提供书面、口语与地道用法文本。`host_builtin` 只交给客户端内置语音/朗读，不生成独立音频；仅主动选择 `auto` 或 `macos_say` 离线附件模式时才分别生成书面与口语 `.m4a`。
 - 可选启用一个跨项目、置顶的 Chief 待回复 TODO，并按个人策略定时提醒；关闭后完全不运行提醒。
 
 ### Token 成本与适用对象
@@ -51,7 +51,7 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 Chief of Staff 是一个强调长期上下文、岗位分工、独立复核和持续跟进的编排层，因此可能让 Token 用量明显高于完成同一项工作的单代理对话。每个长期任务和 subagent 都会执行自己的模型推理与工具调用；并发岗位越多、上下文越长、复核轮次越多，增量通常越明显。OpenAI 官方文档同样说明，subagent 工作流会比可比的单代理运行消耗更多 Token。[OpenAI Subagents 文档](https://learn.chatgpt.com/docs/agent-configuration/subagents)
 
 - **企业或成熟团队：推荐直接使用。** 它更适合跨产品、研发、测试、合规和部署的长周期项目，尤其是需要职责隔离、审批记录、证据链和统一汇报的场景。建议同时设置并发上限、模型路由、阶段预算和停止条件。
-- **个人用户或新手：建议按需启用。** 简单任务不要启动完整 Chief 层级；优先使用 `core` 预设、单阶段/单写入者和更低成本模型。编码任务可搭配经过审计、显式调用的 `$lean-code-path`（基于 [Ponytail](https://github.com/DietrichGebert/ponytail)）减少过度工程；长对话则使用能保留目标、决定、待办和证据的上下文压缩 Skill。Ponytail 主要减少不必要代码，并不保证所有模型或任务都降低 Token。
+- **个人用户或新手：建议按需启用。** 简单任务不要启动完整 Chief 层级；优先使用 `core` 预设、单阶段/单写入者和更低成本模型。编码、诊断、审查和证据化执行可显式调用本仓库原创的 `$kai-lean-execution`，在不缩小目标或跳过验收的前提下减少无效调查、重复计划和冗长日志；长对话迁移仍使用 `context-handoff`。该 Skill 不承诺固定比例的 Token 节省。
 - **不要以“烧 Token”作为成果指标。** 应以完成交付物、验证证据、阻塞解除时间和最终验收为准。降 Token Skill 也不能代替人工审批、完整验收或原始记录留存。
 
 ### 环境要求
@@ -67,6 +67,7 @@ Chief of Staff 是一个强调长期上下文、岗位分工、独立复核和�
 git clone https://github.com/rong2qi/chief-of-staff-codex.git chief-of-staff
 cp -R chief-of-staff ~/.codex/skills/chief-of-staff
 cp -R chief-of-staff/context-handoff ~/.codex/skills/context-handoff
+cp -R chief-of-staff/kai-lean-execution ~/.codex/skills/kai-lean-execution
 ```
 
 安装后新建一个 Codex 任务。Codex 通常会自动检测 Skill 变化；如果没有出现，请重启 Codex。
@@ -86,7 +87,7 @@ $chief-of-staff 初始化这个项目
 2. 称呼：中性、`妈妈` 或自定义；
 3. 数据位置：默认个人目录、外置磁盘/自定义绝对路径，或仅当前项目。
 
-个人/小白还会看到可搜索的 `Ponytail` / `$lean-code-path` 显式调用建议；向导不会替用户安装或启用它。Codex 随后展示将启用的规则、写入位置、语音方式和降级行为，并只在用户选择“应用”后写入。选择“自定义”时，第二张表单可以分别控制视觉确认、闲聊英语教学、书面/口语/地道用法、Codex 内置语音或离线音频附件、声音与语速、暂停标题、TODO 提醒及其周期。没有原生面板的 CLI 或 IDE 会使用同样问题进行简短对话，不会伪造弹窗。
+个人/小白还会看到本仓库原创、显式调用的 `$kai-lean-execution` 建议；向导不会自动调用它或为当前任务注入额外代理。Codex 随后展示将启用的规则、写入位置、语音方式和降级行为，并只在用户选择“应用”后写入。选择“自定义”时，第二张表单可以分别控制视觉确认、闲聊英语教学、书面/口语/地道用法、Codex 内置语音或离线音频附件、声音与语速、暂停标题、TODO 提醒及其周期。没有原生面板的 CLI 或 IDE 会使用同样问题进行简短对话，不会伪造弹窗。
 
 也可完全跳过交互：
 
@@ -112,7 +113,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 - `paused_title_prefix.enabled/value`
 - `reminders.enabled`、时区、日间窗口、周期与额外提醒时间
 
-配置器只更新 `AGENTS.md` 中带标记的受管片段，不覆盖其他规则。双语预设默认采用 `host_builtin`：Skill 提供英文文本，由 Codex/ChatGPT 客户端的内置语音或朗读控件负责播放，不生成音频文件，也不声称能自动播放某一句。若用户在自定义表单中选择离线附件，才使用文本、类型、声音和语速的内容哈希复用独立 `.m4a` 文件；外置存储、macOS `say` 或所选声音不可用时只返回文字，不写入其他目录。
+配置器只更新 `AGENTS.md` 中带标记的受管片段，不覆盖其他规则。双语预设默认采用 `host_builtin`：Skill 仅提供书面、口语和地道用法文本，由 Codex/ChatGPT 客户端的内置语音或朗读控件负责播放，不生成音频文件，也不声称能自动播放某一句。仅当用户主动选择 `auto` 或 `macos_say` 离线附件模式时，才分别为启用的书面和口语文本生成内容寻址的 `.m4a`；外置存储、macOS `say` 或所选声音不可用时只返回文字，不写入其他目录。
 
 ### 使用
 
@@ -137,6 +138,11 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
   "pin_primary_task": true,
   "report_review_mode": "exception_only",
   "report_approval_required": false,
+  "governance_model": "standard",
+  "operator_role": "operator",
+  "continuation_policy": "standard",
+  "ordinary_failure_policy": "bounded_repair_cycle",
+  "continuation_escalation_policy": "existing_approval_boundaries",
   "require_goal_confirmation": true,
   "durable_goal_enabled": true,
   "execution_mode": "effective_throughput",
@@ -146,6 +152,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
   "auto_advance_low_impact": true,
   "proactive_follow_up": true,
   "visual_selection_gate": "disabled",
+  "visual_review_hub_title": "Chief of Creative Direction｜创意总监",
   "durable_child_scope": "same_project",
   "archive_completed_child_tasks": true,
   "projectless_child_policy": "temporary_subagents",
@@ -210,7 +217,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
 
 Chief 创建长期岗位前会读取自己的 Codex `projectId`，用同一个项目目标创建子岗位，并把该 ID 写入任务登记。这样岗位的上下文、工作区和状态都归属于正确项目。若 Chief 尚未处在已保存项目中，它会优先使用临时 subagents；只有确实需要独立长期历史时才请你先选择或保存项目。
 
-Codex 会把长期任务视为可以独立恢复的任务，因此活动中的项目岗位仍可能出现在 Recents。这个入口的好处是集中显示运行、失败和等待人工处理的状态，避免必须逐个进入项目才能发现异常。当前版本采用折中生命周期：运行中、失败或待批复的岗位保持可见；最终汇报经你批准、证据写入项目状态且无需返工后，Chief 才将岗位归档。归档可恢复，不会删除任务 ID、结果摘要或项目内登记。
+Codex 会把长期任务视为可以独立恢复的任务，因此活动中的项目岗位仍可能出现在 Recents。这个入口的好处是集中显示运行、失败和等待处理的状态，避免必须逐个进入项目才能发现异常。当前版本采用折中生命周期：运行中、失败或待处理的岗位保持可见；普通最终汇报经 Chief 按 `exception_only` 审查、证据写入项目状态且无需返工后才归档，项目最终完成仍由操作者确认。归档可恢复，不会删除任务 ID、结果摘要或项目内登记。
 
 ### 岗位对接与多 Agent 会议
 
@@ -284,15 +291,15 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 ### What it does
 
-Chief of Staff gives each Codex project a single user-facing control point. The main task is named dynamically as `Chief of <project name>`, for example `Chief of Personal Web`, and is pinned automatically after initialization. You talk to that main task; it decomposes the objective, creates durable tasks when separate long-lived context is useful, collects structured handoffs, and consolidates the final report.
+Chief of Staff gives each Codex project a single user-facing control point. The main task is named dynamically as `Chief of <project name>`, for example `Chief of Personal Web`, then a pin is attempted and independently checked in a fresh `pinnedThreads` listing. You talk to that main task; it decomposes the objective, creates durable tasks when separate long-lived context is useful, collects structured handoffs, and consolidates the final report.
 
 Each durable task can use installed Skills automatically and can summon temporary subagents for bounded research, review, testing, or discussion.
 
 ### Key features
 
 - A distinguishable main task name for every project: `Chief of <project name>`.
-- Automatic pinning of the main task after initialization.
-- Human review gates for milestone and final reports, with batch collection so simultaneous updates are not missed.
+- Pin verification after initialization: success is reported only when the exact task ID appears in a fresh `pinnedThreads` listing.
+- `exception_only` review by default: the Chief accepts routine milestone and role-final handoffs, while enumerated exceptions and final project completion go to the operator; simultaneous updates are collected in a batch.
 - Mandatory user confirmation of the final goal, deliverables, and acceptance criteria before implementation.
 - Continuous phase dispatch until final acceptance, with a three-level management hierarchy by default.
 - One accountable main task for user communication.
@@ -303,7 +310,7 @@ Each durable task can use installed Skills automatically and can summon temporar
 - Structured handoffs that separate verified facts, inference, open questions, risks, and next steps.
 - Explicit user approval before deletion, production changes, releases, payments, external messages, or permission expansion.
 - An optional pause-title policy adds `已暂停｜` only after an explicit pause and removes it after an explicit resume; idle, blocked, and awaiting-user states do not trigger it.
-- Optional American-English coaching can cover both work and casual chat, with separate written, spoken, idiom, and audio outputs.
+- Optional American-English coaching can cover work and casual chat with written, spoken, and idiom text. `host_builtin` relies on the client's voice/read-aloud control and generates no files; only opt-in `auto` or `macos_say` offline mode creates separate written and spoken `.m4a` attachments.
 - Persistent project state with a reserved adapter seam for a future external control plane.
 - Effective throughput: at most two independent phase lanes, checkpoint evidence, and a stop/self-check after two evidence-free checkpoints.
 - `/goal` only after a confirmed, testable goal with no human gate; durable goals never bypass protected-action approvals.
@@ -317,7 +324,7 @@ Each durable task can use installed Skills automatically and can summon temporar
 Chief of Staff is an orchestration layer built around durable context, role separation, independent review, and proactive follow-up. It can therefore use substantially more tokens than a comparable single-agent conversation. Every durable task and subagent performs its own model and tool work; additional parallel roles, longer contexts, and repeated review cycles generally increase that overhead. OpenAI's documentation likewise notes that subagent workflows consume more tokens than comparable single-agent runs. [OpenAI Subagents documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents)
 
 - **Enterprises and mature teams: recommended for direct use.** It fits long-running cross-functional work that benefits from ownership boundaries, approval records, evidence trails, and consolidated reporting. Configure concurrency limits, model routing, phase budgets, and stopping conditions.
-- **Individuals and beginners: enable it selectively.** Do not start the full hierarchy for a simple task. Prefer the `core` preset, one phase/one writer, and lower-cost models. For coding, consider the audited explicit-only `$lean-code-path`, derived from [Ponytail](https://github.com/DietrichGebert/ponytail), to reduce over-engineering. For long conversations, use a context-compression Skill that preserves goals, decisions, TODOs, and evidence. Ponytail primarily reduces unnecessary code and does not guarantee lower token usage on every model or task.
+- **Individuals and beginners: enable it selectively.** Do not start the full hierarchy for a simple task. Prefer the `core` preset, one phase/one writer, and lower-cost models. For coding, diagnosis, review, and evidence-backed execution, explicitly invoke this repository's original `$kai-lean-execution` to reduce redundant investigation, repeated planning, and log-heavy reporting without narrowing the goal or skipping acceptance. Use `context-handoff` for actual long-conversation migration. The Skill promises no fixed token-saving percentage.
 - **Token burn is not a success metric.** Evaluate delivered artifacts, verification evidence, blocker resolution, and final acceptance. A token-reduction Skill must not replace human approvals, complete validation, or retention of auditable source records.
 
 ### Requirements
@@ -333,6 +340,7 @@ Clone this repository, then copy or symlink it into your personal Codex Skills d
 git clone https://github.com/rong2qi/chief-of-staff-codex.git chief-of-staff
 cp -R chief-of-staff ~/.codex/skills/chief-of-staff
 cp -R chief-of-staff/context-handoff ~/.codex/skills/context-handoff
+cp -R chief-of-staff/kai-lean-execution ~/.codex/skills/kai-lean-execution
 ```
 
 Open a new Codex task after installation. Codex normally detects Skill changes automatically; restart it if the Skill does not appear.
@@ -352,7 +360,7 @@ If no profile exists, a Codex host with a native blocking selection panel presen
 2. Salutation: neutral, `妈妈`, or a custom value.
 3. Data location: the default personal directory, an external/custom absolute path, or the current project only.
 
-Individuals and beginners also see a searchable `Ponytail` / `$lean-code-path` explicit-only recommendation; onboarding never installs or enables it. Codex previews the enabled rules, destination, voice delivery, and fallback behavior, then writes only after a final Apply confirmation. Custom mode opens a second form for visual approval, casual-chat coaching, written/spoken/idiom notes, built-in host voice or offline audio attachments, voice and rate, pause-title behavior, TODO reminders, and reminder cadence. A CLI or IDE without the native panel asks the same questions conversationally; it does not simulate a pop-up.
+Individuals and beginners also see this repository's original, explicit-only `$kai-lean-execution` recommendation; onboarding never invokes it automatically or injects extra agents into the current task. Codex previews the enabled rules, destination, voice delivery, and fallback behavior, then writes only after a final Apply confirmation. Custom mode opens a second form for visual approval, casual-chat coaching, written/spoken/idiom notes, built-in host voice or offline audio attachments, voice and rate, pause-title behavior, TODO reminders, and reminder cadence. A CLI or IDE without the native panel asks the same questions conversationally; it does not simulate a pop-up.
 
 For deterministic non-interactive setup:
 
@@ -367,7 +375,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 
 A custom data root must already exist. A missing or unwritable external disk fails safely with no local fallback. Global preferences are configured once and inherited by future projects; use `$chief-of-staff reconfigure my preferences` to run onboarding again. The public `core` preset leaves every personal rule disabled.
 
-The unified profile controls visual selection, American-English coaching and casual-chat coverage, voice delivery, salutation, pause-title prefix, and reminder schedule. The configurator replaces only a marked managed block in `AGENTS.md`. The bilingual preset defaults to `host_builtin`: the Skill supplies the English text and the Codex/ChatGPT client owns voice/read-aloud playback, with no generated audio files and no promise of per-sentence autoplay. Offline attachments remain opt-in; when selected, separate content-addressed `.m4a` files are reused by text hash, and missing storage or renderer support safely returns text only.
+The unified profile controls chair-led governance and continuation policy, the single-hub visual gate, American-English coaching and casual-chat coverage, voice delivery, salutation, pause-title prefix, and reminder schedule. The configurator replaces only a marked managed block in `AGENTS.md`. The bilingual preset defaults to `host_builtin`: the Skill supplies written, spoken, and idiom text while the Codex/ChatGPT client owns voice/read-aloud playback; no audio files are generated and per-sentence autoplay is not promised. Only an explicit `auto` or `macos_say` offline choice creates separate content-addressed `.m4a` attachments for enabled written and spoken text; missing storage or renderer support safely returns text only.
 
 ### Use
 
@@ -392,11 +400,21 @@ When no project name is supplied, the initializer uses the project root director
   "pin_primary_task": true,
   "report_review_mode": "exception_only",
   "report_approval_required": false,
+  "governance_model": "standard",
+  "operator_role": "operator",
+  "continuation_policy": "standard",
+  "ordinary_failure_policy": "bounded_repair_cycle",
+  "continuation_escalation_policy": "existing_approval_boundaries",
   "require_goal_confirmation": true,
+  "durable_goal_enabled": true,
+  "execution_mode": "effective_throughput",
+  "max_parallel_phase_lanes": 2,
+  "no_evidence_checkpoint_limit": 2,
   "max_management_depth": 3,
   "auto_advance_low_impact": true,
   "proactive_follow_up": true,
   "visual_selection_gate": "disabled",
+  "visual_review_hub_title": "Chief of Creative Direction｜创意总监",
   "durable_child_scope": "same_project",
   "archive_completed_child_tasks": true,
   "projectless_child_policy": "temporary_subagents",
@@ -461,7 +479,7 @@ Durable Codex tasks retain visible, independent context. Temporary subagents han
 
 Before creating a durable role, the Chief resolves its Codex `projectId`, creates the child against the same project target, and records that ID in the task registry. If the Chief is not in a saved project, it defaults to temporary subagents and asks the user to select or save a project only when separate durable history is necessary.
 
-Codex treats durable tasks as independently resumable tasks, so active project roles may still appear in Recents. That shared view is useful for surfacing running, failed, and needs-attention states without opening every project. This Skill therefore uses a lifecycle policy: active or actionable roles remain visible; after the user approves a final handoff, evidence is recorded, and no retry remains, the Chief archives the child. Archiving is reversible and preserves the task ID, result summary, and project registry record.
+Codex treats durable tasks as independently resumable tasks, so active project roles may still appear in Recents. That shared view is useful for surfacing running, failed, and needs-attention states without opening every project. This Skill therefore uses a lifecycle policy: active or actionable roles remain visible; under `exception_only`, the Chief archives a routine child only after reviewing its final handoff, recording evidence, and confirming that no retry remains. Final project completion still requires the operator. Archiving is reversible and preserves the task ID, result summary, and project registry record.
 
 ### Peer coordination and multi-agent meetings
 
@@ -524,7 +542,7 @@ Project bundles live in `.codex/context-migrations/`; projectless bundles live i
 - `SKILL.md`: Skill routing and operating instructions / Skill 路由与操作说明。
 - `scripts/init_project.py`: safe project initializer and validator / 安全的项目初始化与校验脚本。
 - `scripts/configure_preferences.py`: idempotent preference onboarding / 幂等偏好配置器。
-- `scripts/render_english_audio.py`: content-addressed written/spoken audio / 书面与口语逐句音频。
+- `scripts/render_english_audio.py`: opt-in offline attachment renderer for `auto`/`macos_say`; never used by `host_builtin` / `auto`、`macos_say` 的可选离线附件渲染器，`host_builtin` 不调用。
 - `assets/project-template/`: generated project contract and agent profiles / 项目契约与角色配置模板。
 - `assets/operator-preferences.example.json`: privacy-safe core defaults / 隐私安全的核心默认偏好。
 - `assets/presets/`: opt-in preference presets / 可主动启用的偏好预设。
@@ -533,3 +551,4 @@ Project bundles live in `.codex/context-migrations/`; projectless bundles live i
 - `assets/reminder-policy.example.json`: optional personal reminder policy example / 可选的个人提醒策略示例。
 - `agents/openai.yaml`: Codex UI metadata and implicit invocation policy / Codex 界面元数据与自动调用策略。
 - `context-handoff/`: global context checkpoint and verified rollover Skill / 全局上下文检查点与校验接续 Skill。
+- `kai-lean-execution/`: original explicit-only lean execution Skill / 原创、仅显式调用的精简执行 Skill。
