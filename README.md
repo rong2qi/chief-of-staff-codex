@@ -39,9 +39,9 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 - 使用项目文件保存协调状态，并为未来外置控制平面预留适配接口。
 - 默认采用 `effective_throughput`：最多两个互不冲突的阶段并行；每个检查点都要产生可验证证据，连续两个检查点无证据即停止并自查。
 - 已确认、可验收且没有人工审批门的目标才可使用 `/goal`；长期目标不会绕过确认或高影响操作的单独审批。
-- 创意总监在北京时间每天 11:00 和 20:00 执行有证据的扫描，而非空转目标：只读其他项目、不发消息、不改文件、最多一条待定建议；偏好证据分为 `explicit`、`confirmed_pattern` 和 `hypothesis`。
+- 创意总监在北京时间每天 11:00 和 20:00 执行有证据的主动扫描，而非空转目标；最多一条待定创意建议。启用视觉门时，它还是唯一面向操作者的视觉审阅中心：接收项目预览包、维护视觉待决队列，并只把操作者原话回传来源 Chief；除此以外只读、不主动干预、不修改项目文件。
 - 云部署目标和证据登记在独立 deployment registry 中；登记不是授权，生产部署、生产变更、发布或回滚仍须在操作前取得明确用户批准。
-- 可选的视觉人工门可要求项目先提供可点击预览，由指定的置顶审阅任务统一收纳；操作者明确选择前，未选方案不得成为最终版本。
+- 可选的视觉人工门要求项目先提供可点击预览，并只提交给置顶的 `Chief of Creative Direction｜创意总监`；项目 Chief、岗位、“一人之下”和 TODO 不得复制同一视觉请求。操作者明确选择前，未选方案不得成为最终版本。
 - 可选的暂停标题策略会在操作者明确暂停时添加 `已暂停｜`，明确恢复时移除。空闲、阻塞或等待批复不会被误判为暂停。
 - 可选的美式英语教学可覆盖工作消息和闲聊，分别提供书面、口语、地道用法及两个独立音频片段。
 - 可选启用一个跨项目、置顶的 Chief 待回复 TODO，并按个人策略定时提醒；关闭后完全不运行提醒。
@@ -103,6 +103,8 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 
 统一配置文件支持以下开关：
 
+- `governance_model.enabled`（主席负责制）
+- `governance_model.continuation_policy.enabled`（安全范围内默认持续推进）
 - `visual_selection_gate.enabled`
 - `american_english_coaching.enabled` 与 `include_casual_chat`
 - `audio_playback.enabled`、`provider`、`clips`、`voice`、`rate` 与 `storage_root`
@@ -133,7 +135,8 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
   "project_name": "个人web",
   "primary_task_title": "Chief of 个人web",
   "pin_primary_task": true,
-  "report_approval_required": true,
+  "report_review_mode": "exception_only",
+  "report_approval_required": false,
   "require_goal_confirmation": true,
   "durable_goal_enabled": true,
   "execution_mode": "effective_throughput",
@@ -153,7 +156,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 }
 ```
 
-Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值；当 `pin_primary_task` 为 `true` 时，它随后会识别并置顶当前任务。只有工具确认成功后才会报告已置顶。
+Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。所有新 Chief 默认将 `pin_primary_task` 设为 `true`；操作者以后可手动取消置顶。置顶接口返回成功并不够，Skill 必须再次读取任务列表，并确认精确 task ID 出现在 `pinnedThreads` 后才能报告成功。若回查失败，当前 Chief 继续完成已授权工作但标记为 `pin_verification_failed`；在安全交接点归档并注明 `unable_to_pin`，随后只在同一 saved project 创建一个接续 Chief，完整交接目标、阶段、审批、TODO 与写入权并重新验证置顶。旧任务保留，不得同时创建重复控制面。
 
 初始化器还会创建：
 
@@ -217,17 +220,31 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 ### 待回复 TODO 与提醒（可选）
 
-提醒是个人级、跨项目服务，不会让每个 Chief 重复创建一套自动化。只有统一偏好中的 `reminders.enabled` 为 `true` 时，Skill 才创建或复用一个置顶的 `TODO｜待回复 Chief 汇总` 对话；它只收集 Chief 明确等待你审批、确认、决策、补充信息或权限选择、且尚无后续用户回复的事项。仅仅打开或阅读对话不会被误判为已回复。
+提醒是个人级、跨项目服务，不会让每个 Chief 重复创建一套自动化。只有统一偏好中的 `reminders.enabled` 为 `true` 时，Skill 才创建或复用一个置顶的 `TODO｜待回复 Chief 汇总` 对话；它只收集 Chief 明确等待你审批、确认、决策、补充信息或权限选择、且尚无后续用户回复的事项。视觉选择只认 `Chief of Creative Direction｜创意总监` 为权威来源：项目 Chief、岗位、“一人之下”和旧审阅中心中的副本全部排除，并把创意总监持有的多个视觉 ID 合并为一个待回复入口。仅仅打开或阅读对话不会被误判为已回复。
+
+### 视觉决策只进创意总监
+
+启用 `visual_selection_gate` 后，项目 Chief 负责制作或组织可点击的 NON-FINAL 预览，但只能把稳定决策 ID、差异、证据和影响提交给唯一置顶的 `Chief of Creative Direction｜创意总监`。创意总监可以同时持有多个视觉待决项，并将新变化合并成一条简洁审阅消息；“最多一条待定建议”的限制只约束主动创意建议，不限制项目送来的视觉审批。
+
+创意总监不能替操作者选择、实施设计、安装构建或修改来源项目。收到操作者明确决定后，它只把原话、决策 ID 和边界回传来源 Chief。若操作者没有及时回复，创意总监保持等待，不重复催促；后续由统一 TODO 扫描创意总监，而不是让每个项目再次提醒。
 
 示例预设采用北京时间 09:00–18:00 每小时一次（包含 09:00 和 18:00），并在 22:00 再提醒一次；时区、日间窗口、间隔和额外时间都可调整。保存偏好不会自行创建自动化，仍需 Skill 通过 Codex 的定时任务接口建立或更新。关闭时会暂停该策略登记的全部自动化，因此不会运行扫描，也不会发送通知；保留 TODO 对话和 ID 便于以后恢复。
 
 ### 汇报批复机制
 
-启用默认的 `report_approval_required` 后，子岗位的普通过程消息不会打断你，但里程碑汇报和最终交接必须带唯一汇报编号，并在 Codex 中请求人工处理。Chief 在任一子任务有结果时会立即检查全部活跃子任务，把所有新汇报去重写入 `approval-queue.json`，再在主任务中一次性列出待批复事项。
+默认 `report_review_mode` 为 `exception_only`。子岗位仍须提交唯一汇报编号、证据、风险和下一步，但普通进度与岗位最终交接由项目 Chief 按执行契约审查，不再直接请求操作者批准。Chief 会检查范围、唯一写入面、验收证据、测试、冲突和高影响边界，并把审查依据写入 `approval-queue.json`。
 
-你仍然只需要在 Chief 主任务中选择批准或退回修改。Chief 会把决定转发给对应子岗位；在收到你的明确决定之前，该岗位在登记中保持 `needs_attention`，也不会把沉默或无关消息视为默认批准。若运行环境不支持原生等待输入状态，子岗位使用 `REVIEW_REQUIRED` 标记，由 Chief 主任务发起人工审批作为降级方案。
+只有目标确认、实质产品选择、视觉选择、高影响操作、安全问题、范围或写入权冲突、失败/证据不足、扩层和项目最终交付才升级给操作者。例外请求使用 `USER_ACTION_REQUIRED`；普通岗位交接使用 `CHIEF_REVIEW_READY`，由 Chief 批准、退回或继续派发。项目最终完成仍必须由操作者确认。
 
-汇报批准只表示你已审阅并接受该次交接，不会自动授权删除、发布、生产变更、支付、外发消息或扩大权限；这些高影响操作仍需单独确认。
+兼容模式 `all_reports` 可恢复每份里程碑/最终交接都由操作者批准的旧行为；此时 `report_approval_required` 为 `true`。无论采用哪种模式，汇报批准都不会自动授权删除、发布、生产变更、支付、外发消息或扩大权限。
+
+### 主席负责制
+
+启用 `governance_model.mode = chair_led_cabinet` 后，操作者只保留最终目标、重大产品路线、视觉选择、高影响操作、Chief 任免/暂停及项目最终验收等权力。项目 Chief 对日常行政、岗位管理、普通验收、一次限界返修和安全范围内的阶段推进负全责；只读复核者只有证据核验权。
+
+普通岗位使用 `CHIEF_REVIEW_READY` 向项目 Chief 汇报。非视觉法定例外使用 `CHAIR_BRIEF_READY` 交给“一人之下”，由它压缩、去重后才能向操作者发出 `USER_ACTION_REQUIRED`；视觉决定仍只进入创意总监。TODO 只扫描这两个权威入口。等待决定只冻结受影响的写入面，其他安全路线必须继续。
+
+可选启用 `governance_model.continuation_policy` 后，项目 Chief 必须选择证据最强、在范围内且安全的继续路径并直接执行。只要这种路径仍存在，就不把停止、保留失败状态或延期列成需要操作者选择的并列方案；普通失败继续由 Chief 通过限界诊断、修复和复检负责。只有继续本身需要新增权限或创建新 Chief 时才报备。该规则不会授权高影响操作、绕过视觉门、隐藏安全证据、改变写入权或扩张已确认目标。
 
 ### 目标闭环与主动推进
 
@@ -243,7 +260,7 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 `effective_throughput` 以已完成且有证据的验收为中心。默认至多两个无共享写入面的独立阶段并行；每个检查点必须关联具体验收证据，连续两个检查点无证据时，Chief 停止该线路并自查目标、范围、依赖、写入权、验收方法和阻塞原因。
 
-只有最终目标已确认、验收可验证且没有待处理人工门时才可使用 `/goal`。创意总监在北京时间每天 11:00 和 20:00 执行有证据的扫描，最多保留一条待定建议；只读其他项目，不发消息、不改文件。偏好证据分为明确偏好、一致模式和单次假设；新项目建议至少需要两个不同项目的明确偏好或一致模式证据，并包含目标用户、最小验证、成功阈值和停止条件。
+只有最终目标已确认、验收可验证且没有待处理人工门时才可使用 `/goal`。创意总监在北京时间每天 11:00 和 20:00 执行有证据的主动扫描，最多保留一条待定创意建议；同时可作为唯一视觉审阅中心接收项目预览并回传妈妈原话。除登记过的视觉决定回传外，它只读其他项目、不主动干预、不改文件。偏好证据分为明确偏好、一致模式和单次假设；新项目建议至少需要两个不同项目的明确偏好或一致模式证据，并包含目标用户、最小验证、成功阈值和停止条件。
 
 当云部署工作被明确纳入范围时，应在独立 registry 中登记目标与证据；该记录是库存与审计记录而非执行凭证。生产部署、生产变更、发布或回滚均须在操作前单独取得明确用户批准。
 
@@ -290,9 +307,9 @@ Each durable task can use installed Skills automatically and can summon temporar
 - Persistent project state with a reserved adapter seam for a future external control plane.
 - Effective throughput: at most two independent phase lanes, checkpoint evidence, and a stop/self-check after two evidence-free checkpoints.
 - `/goal` only after a confirmed, testable goal with no human gate; durable goals never bypass protected-action approvals.
-- Evidence-backed Creative Director scans at 11:00 and 20:00 Beijing time, with no more than one pending recommendation and preference evidence classified as `explicit`, `confirmed_pattern`, or `hypothesis`.
+- Evidence-backed Creative Director scans at 11:00 and 20:00 Beijing time, with no more than one pending creative recommendation. When the visual gate is enabled, it also becomes the only operator-facing visual review hub: it receives project preview packets and relays only the operator's exact decision back to the source Chief.
 - An independent cloud deployment registry; a registry record never authorizes production work.
-- An optional human visual-selection gate: projects submit clickable previews to a configured review hub, and no unselected option may become the final version.
+- An optional human visual-selection gate: projects submit clickable previews only to the pinned `Chief of Creative Direction｜创意总监`; project Chiefs, roles, the general Chief task, and TODO must not duplicate the request, and no unselected option may become the final version.
 - An optional pinned, cross-project unanswered-Chief TODO with configurable reminders; disabling it stops all reminder runs.
 
 ### Token cost and intended users
@@ -373,7 +390,8 @@ When no project name is supplied, the initializer uses the project root director
   "project_name": "Personal Web",
   "primary_task_title": "Chief of Personal Web",
   "pin_primary_task": true,
-  "report_approval_required": true,
+  "report_review_mode": "exception_only",
+  "report_approval_required": false,
   "require_goal_confirmation": true,
   "max_management_depth": 3,
   "auto_advance_low_impact": true,
@@ -389,7 +407,7 @@ When no project name is supplied, the initializer uses the project root director
 }
 ```
 
-The Skill reads `primary_task_title` and renames the current main task to that exact value. When `pin_primary_task` is `true`, it then resolves and pins the current task, reporting success only after tool confirmation.
+The Skill reads `primary_task_title` and renames the current main task to that exact value. Every new Chief defaults `pin_primary_task` to `true`; the operator may unpin it later. A successful pin API response is not enough: the exact task ID must also appear in a fresh `pinnedThreads` listing before success is reported. If that independent check fails, the current Chief completes its already-authorized work with `pin_verification_failed`; at a safe handoff boundary it is archived with reason `unable_to_pin`, and exactly one successor Chief is created in the same saved project with the goal, phase, approvals, TODOs, and write ownership transferred. The original remains recoverable, and no duplicate control plane may run concurrently.
 
 The initializer also creates:
 
@@ -453,17 +471,31 @@ Every durable role may convene a temporary subagent meeting with up to three par
 
 ### Unanswered-Chief TODO and reminders (optional)
 
-Reminders are one personal, cross-project service rather than one automation per Chief. Only when `reminders.enabled` is `true` does the Skill create or reuse a pinned `TODO｜待回复 Chief 汇总` thread. It includes only Chiefs that explicitly await approval, confirmation, a decision, more information, or a permission choice and have no later resolving user reply. Merely opening or reading a thread does not clear an item.
+Reminders are one personal, cross-project service rather than one automation per Chief. Only when `reminders.enabled` is `true` does the Skill create or reuse a pinned `TODO｜待回复 Chief 汇总` thread. It includes only Chiefs that explicitly await approval, confirmation, a decision, more information, or a permission choice and have no later resolving user reply. For visual selections, only `Chief of Creative Direction｜创意总监` is authoritative; copies in project Chiefs, roles, the general Chief task, and retired hubs are excluded, and multiple visual IDs are grouped under that one task. Merely opening or reading a thread does not clear an item.
+
+### Visual decisions go only to the Creative Director
+
+With `visual_selection_gate` enabled, a project Chief creates or organizes clickable NON-FINAL previews, then submits the stable decision ID, differences, evidence, and impact only to the single pinned `Chief of Creative Direction｜创意总监`. The Creative Director may hold multiple incoming visual decisions and batches newly changed items into one concise review message. The one-pending-recommendation limit applies only to proactive creative suggestions, not to project-submitted visual approvals.
+
+The Creative Director cannot choose for the operator, implement the design, install a build, or modify the source project. After an explicit operator decision, it relays only the exact wording, decision ID, and boundary to the source Chief. If the operator has not replied, the Creative Director waits without repeated nudges; the shared TODO later discovers that one task instead of every project reminding separately.
 
 The example preset uses every Beijing-time hour from 09:00 through 18:00 inclusive, plus 22:00; timezone, daytime window, interval, and additional times are configurable. Saving a preference does not create an automation by itself: the Skill still uses Codex's scheduled-task interface to create or update it. Disabling pauses every automation recorded by the policy, producing no scan runs or notifications while preserving the TODO thread and identifiers for later re-enablement.
 
 ### Report approval workflow
 
-With the default `report_approval_required` setting enabled, routine progress commentary does not interrupt you, but milestone reports and final handoffs carry a unique report ID and request human review in Codex. When any child produces a result, the Chief immediately snapshots every active child, deduplicates all new reports into `approval-queue.json`, and presents one approval batch in the main task.
+The default `report_review_mode` is `exception_only`. Roles still return a unique report ID, evidence, risks, and next steps, but the project Chief reviews routine progress and role-final handoffs against the execution contract instead of asking the operator. The Chief checks scope, exclusive write ownership, acceptance evidence, tests, conflicts, and protected-action boundaries, then records its decision basis in `approval-queue.json`.
 
-You still approve or request changes only in the Chief task. The Chief relays each decision to the matching child; until an explicit decision is received, its registry status remains `needs_attention`, and silence or an unrelated message never counts as approval. If the runtime cannot open a native blocking review request, the child emits a `REVIEW_REQUIRED` marker and the Chief opens the human-review request as a fallback.
+Only goal confirmation, material product choices, visual choices, protected actions, safety issues, scope or ownership conflicts, failed or unverifiable work, depth expansion, and final project completion reach the operator. Exceptions use `USER_ACTION_REQUIRED`; routine role handoffs use `CHIEF_REVIEW_READY`, and the Chief approves, requests changes, or advances the work. Final project completion still requires the operator.
 
-Report approval acknowledges that handoff only. It does not authorize deletion, release, production changes, payments, external messages, or permission expansion; those high-impact actions still require separate confirmation.
+Compatibility mode `all_reports` restores the previous behavior in which every milestone/final handoff requires operator review and sets `report_approval_required` to `true`. In either mode, report approval never authorizes deletion, release, production changes, payments, external messages, or permission expansion.
+
+### Chair-led cabinet governance
+
+With `governance_model.mode = chair_led_cabinet`, the operator retains final-goal, material product-direction, visual-selection, protected-action, Chief appointment/pause/removal, and final project acceptance powers. Project Chiefs are accountable for routine administration, role management, ordinary acceptance, one bounded repair cycle, and safe phase advancement. Read-only verifiers have evidence authority only.
+
+Routine roles use `CHIEF_REVIEW_READY`. Non-visual statutory exceptions use `CHAIR_BRIEF_READY` to the general office, which deduplicates and compresses them before emitting `USER_ACTION_REQUIRED`; visual decisions remain exclusive to the Creative Director. TODO scans only those two authoritative hubs. Waiting freezes only the affected write surface while independent safe work continues.
+
+When `governance_model.continuation_policy` is enabled, each project Chief executes the strongest evidence-backed safe in-scope continuation. Stopping, preserving a failed state, and delaying are not peer options while such a path exists. Only a continuation that itself needs a new permission or a new Chief is escalated. Protected actions, visual gates, safety disclosure, write ownership, and the confirmed goal remain unchanged boundaries.
 
 ### Goal closure and proactive progression
 

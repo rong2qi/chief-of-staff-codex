@@ -70,6 +70,65 @@ def validate_preferences(profile: dict[str, Any]) -> list[str]:
         errors.append("preset is invalid")
     if profile.get("scope") not in {"global", "project"}:
         errors.append("scope must be global or project")
+    if profile.get("report_review_mode", "exception_only") not in {
+        "all_reports", "exception_only"
+    }:
+        errors.append("report_review_mode must be all_reports or exception_only")
+
+    governance = _require_object(profile, "governance_model", errors)
+    _require_bool(governance, "enabled", "governance_model", errors)
+    if governance.get("mode") != "chair_led_cabinet":
+        errors.append("governance_model.mode must be chair_led_cabinet")
+    if governance.get("operator_role") != "chair":
+        errors.append("governance_model.operator_role must be chair")
+    for key in ("general_office_title", "todo_title"):
+        if not isinstance(governance.get(key), str) or not governance.get(key):
+            errors.append(f"governance_model.{key} must be a non-empty string")
+    office_thread = governance.get("general_office_thread_id")
+    if office_thread is not None and not isinstance(office_thread, str):
+        errors.append("governance_model.general_office_thread_id must be a string or null")
+    if governance.get("enabled") is True and not office_thread:
+        errors.append("enabled governance_model requires general_office_thread_id")
+    if governance.get("direct_report_policy") != "chain_of_command":
+        errors.append("governance_model.direct_report_policy must be chain_of_command")
+    if governance.get("auditor_authority") != "evidence_only":
+        errors.append("governance_model.auditor_authority must be evidence_only")
+    if governance.get("partial_pause_policy") != "affected_surface_only":
+        errors.append("governance_model.partial_pause_policy must be affected_surface_only")
+    continuation = governance.get("continuation_policy")
+    if not isinstance(continuation, dict):
+        errors.append("governance_model.continuation_policy must be an object")
+        continuation = {}
+    _require_bool(
+        continuation,
+        "enabled",
+        "governance_model.continuation_policy",
+        errors,
+    )
+    if continuation.get("enabled") is True and governance.get("enabled") is not True:
+        errors.append("enabled continuation_policy requires enabled governance_model")
+    if continuation.get("default_action") != "advance_best_safe_in_scope_path":
+        errors.append(
+            "governance_model.continuation_policy.default_action must be "
+            "advance_best_safe_in_scope_path"
+        )
+    if continuation.get("stop_or_defer_is_operator_initiated") is not True:
+        errors.append(
+            "governance_model.continuation_policy.stop_or_defer_is_operator_initiated "
+            "must be true"
+        )
+    if continuation.get("escalate_only_for") != ["new_permission", "new_chief"]:
+        errors.append(
+            "governance_model.continuation_policy.escalate_only_for must be "
+            "[new_permission, new_chief]"
+        )
+    if continuation.get("ordinary_failure_policy") != (
+        "continue_bounded_diagnosis_repair_and_verification"
+    ):
+        errors.append(
+            "governance_model.continuation_policy.ordinary_failure_policy must be "
+            "continue_bounded_diagnosis_repair_and_verification"
+        )
 
     visual = _require_object(profile, "visual_selection_gate", errors)
     _require_bool(visual, "enabled", "visual_selection_gate", errors)
@@ -182,7 +241,10 @@ def managed_agents_block(profile_path: Path, renderer_path: Path) -> str:
 
 - Before a complete user-facing reply, read `{profile_path}` when it exists and apply only policies whose `enabled` value is true. Missing or invalid profiles disable optional behavior; they do not change core safety or approval rules.
 - If `operator_salutation.enabled` is true, use its configured value unless the operator explicitly overrides it in the current conversation.
-- If `visual_selection_gate.enabled` is true, require clickable non-final previews and the operator's explicit selection before final visual implementation.
+- Apply `report_review_mode`. In `exception_only`, the project Chief reviews routine child progress and final handoffs against their contracts without asking the operator. Escalate only goal confirmation, material product choices, visual choices through the Creative Director, protected actions, safety/security, ownership or scope conflicts, failed or unverifiable work, depth expansion, and final project completion.
+- If `governance_model.enabled` is true, treat the operator as chair: project Chiefs own routine administration, auditors have evidence-only authority, roles follow the registered chain of command, and an unresolved decision freezes only its affected write surface. Route non-visual statutory exceptions only to the configured general-office task as `CHAIR_BRIEF_READY`; only that task may emit the operator-facing `USER_ACTION_REQUIRED`. TODO scans only the general office and Creative Director.
+- If `governance_model.continuation_policy.enabled` is true, every project Chief must select and execute the strongest evidence-backed safe in-scope continuation without asking the operator. Do not present stopping, preserving a failed state, or delaying as peer options while a safe continuation exists; the operator will initiate those choices when wanted. Escalate only when continuing itself requires a new permission or creation of a new Chief. An ordinary failure remains Chief-owned while another bounded safe diagnostic, repair, or verification path exists. This policy does not authorize protected actions, bypass the Creative Director visual gate, or conceal safety/security evidence; those constraints determine whether a path is safe and already authorized.
+- If `visual_selection_gate.enabled` is true, require clickable non-final previews and the operator's explicit selection before final visual implementation. Route every visual packet only to the configured `Chief of Creative Direction｜创意总监` task; do not duplicate it to the general Chief task, project tasks, roles, or TODO. If unanswered, only that Creative Director task remains the authoritative waiting item for the TODO scanner.
 - If `american_english_coaching.enabled` is true, append its configured written, spoken, and idiom sections. Include casual conversation only when `include_casual_chat` is true.
 - If audio is enabled with `provider: host_builtin`, keep the English text available for the host's built-in voice/read-aloud control; generate no files and do not claim autoplay or per-sentence native controls. For `auto` or `macos_say`, render each enabled written/spoken sentence with `{renderer_path}` and attach the returned absolute `.m4a` path separately. If rendering returns `text_only`, keep the text and do not write to another directory.
 - Apply the configured pause-title prefix and reminder policy only when their sections are enabled. Saving reminder preferences does not itself authorize creating or changing automations.

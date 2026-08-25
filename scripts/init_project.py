@@ -44,6 +44,29 @@ def render(source: Path, project_name: str, preferences: Optional[dict] = None) 
     if source.relative_to(TEMPLATE_ROOT) == Path(".chief-of-staff/project.json"):
         project = json.loads(rendered)
         if preferences is not None:
+            review_mode = preferences.get("report_review_mode", "exception_only")
+            project["report_review_mode"] = review_mode
+            project["report_approval_required"] = review_mode == "all_reports"
+            governance = preferences["governance_model"]
+            if governance["enabled"]:
+                project["governance_model"] = "chair_led_cabinet"
+                project["operator_role"] = "chair"
+                project["routine_administration_owner"] = "project_chief"
+                project["auditor_authority"] = "evidence_only"
+                project["direct_report_policy"] = "chain_of_command"
+                project["partial_pause_policy"] = "affected_surface_only"
+                project["operator_escalation_policy"] = "statutory_exceptions_via_hubs"
+                continuation = governance["continuation_policy"]
+                if continuation["enabled"]:
+                    project["continuation_policy"] = (
+                        "advance_best_safe_in_scope_path"
+                    )
+                    project["ordinary_failure_policy"] = (
+                        "continue_bounded_diagnosis_repair_and_verification"
+                    )
+                    project["continuation_escalation_policy"] = (
+                        "new_permission_or_new_chief"
+                    )
             visual = preferences["visual_selection_gate"]
             project["visual_selection_gate"] = (
                 "operator_after_clickable_preview" if visual["enabled"] else "disabled"
@@ -151,7 +174,12 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             value,
             {
                 "schema_version", "project_name", "primary_task_title", "control_plane",
-                "pin_primary_task", "report_approval_required", "task_title_pattern",
+                "pin_primary_task", "report_review_mode", "report_approval_required",
+                "governance_model", "operator_role", "routine_administration_owner",
+                "auditor_authority", "direct_report_policy", "partial_pause_policy",
+                "operator_escalation_policy", "continuation_policy",
+                "ordinary_failure_policy", "continuation_escalation_policy",
+                "task_title_pattern",
                 "require_goal_confirmation", "max_management_depth",
                 "durable_goal_enabled", "execution_mode", "max_parallel_phase_lanes",
                 "no_evidence_checkpoint_limit", "visual_selection_gate",
@@ -167,6 +195,10 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
         )
         for key in (
             "project_name", "primary_task_title", "control_plane", "task_title_pattern",
+            "report_review_mode", "governance_model", "operator_role",
+            "routine_administration_owner", "auditor_authority", "direct_report_policy",
+            "partial_pause_policy", "operator_escalation_policy", "continuation_policy",
+            "ordinary_failure_policy", "continuation_escalation_policy",
             "visual_selection_gate", "visual_review_hub_title",
         ):
             if key in value and not isinstance(value[key], str):
@@ -193,6 +225,60 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             errors.append(f"max_management_depth in {relative} must be a positive integer")
         if value.get("execution_mode") != "effective_throughput":
             errors.append(f"execution_mode in {relative} must be 'effective_throughput'")
+        report_review_mode = value.get("report_review_mode")
+        if report_review_mode not in {"all_reports", "exception_only"}:
+            errors.append(
+                f"report_review_mode in {relative} must be 'all_reports' or 'exception_only'"
+            )
+        expected_legacy_flag = report_review_mode == "all_reports"
+        if isinstance(value.get("report_approval_required"), bool) and value.get(
+            "report_approval_required"
+        ) != expected_legacy_flag:
+            errors.append(
+                f"report_approval_required in {relative} must match report_review_mode"
+            )
+        governance_model = value.get("governance_model")
+        if governance_model not in {"standard", "chair_led_cabinet"}:
+            errors.append(
+                f"governance_model in {relative} must be 'standard' or 'chair_led_cabinet'"
+            )
+        if governance_model == "chair_led_cabinet":
+            expected_governance = {
+                "operator_role": "chair",
+                "routine_administration_owner": "project_chief",
+                "auditor_authority": "evidence_only",
+                "direct_report_policy": "chain_of_command",
+                "partial_pause_policy": "affected_surface_only",
+                "operator_escalation_policy": "statutory_exceptions_via_hubs",
+            }
+            for key, expected_value in expected_governance.items():
+                if value.get(key) != expected_value:
+                    errors.append(
+                        f"{key} in {relative} must be {expected_value!r} under chair_led_cabinet"
+                    )
+        continuation_policy = value.get("continuation_policy")
+        if continuation_policy not in {"standard", "advance_best_safe_in_scope_path"}:
+            errors.append(
+                f"continuation_policy in {relative} must be 'standard' or "
+                "'advance_best_safe_in_scope_path'"
+            )
+        if continuation_policy == "advance_best_safe_in_scope_path":
+            if governance_model != "chair_led_cabinet":
+                errors.append(
+                    f"continuation_policy in {relative} requires chair_led_cabinet"
+                )
+            expected_continuation = {
+                "ordinary_failure_policy": (
+                    "continue_bounded_diagnosis_repair_and_verification"
+                ),
+                "continuation_escalation_policy": "new_permission_or_new_chief",
+            }
+            for key, expected_value in expected_continuation.items():
+                if value.get(key) != expected_value:
+                    errors.append(
+                        f"{key} in {relative} must be {expected_value!r} under "
+                        "advance_best_safe_in_scope_path"
+                    )
         if value.get("visual_selection_gate") not in {
             "disabled", "operator_after_clickable_preview"
         }:
@@ -624,7 +710,12 @@ def validate(target: Path) -> list[str]:
     return errors
 
 
-def initialize(target: Path, project_name: str, preferences: Optional[dict] = None) -> int:
+def initialize(
+    target: Path,
+    project_name: str,
+    preferences: Optional[dict] = None,
+    persist_preferences: bool = False,
+) -> int:
     files = template_files()
     conflicts: list[Path] = []
     planned: list[tuple[Path, bytes]] = []
@@ -688,10 +779,21 @@ def initialize(target: Path, project_name: str, preferences: Optional[dict] = No
                     # Upgrade an older managed project by adding only missing defaults.
                     upgraded_project = dict(existing_project)
                     project_changed = False
+                    if "report_review_mode" not in upgraded_project:
+                        upgraded_project["report_review_mode"] = (
+                            "all_reports"
+                            if upgraded_project.get("report_approval_required") is True
+                            else "exception_only"
+                        )
+                        project_changed = True
                     for key in (
                         "durable_goal_enabled", "execution_mode", "max_parallel_phase_lanes",
                         "no_evidence_checkpoint_limit", "visual_selection_gate",
-                        "visual_review_hub_title",
+                        "visual_review_hub_title", "governance_model", "operator_role",
+                        "routine_administration_owner", "auditor_authority",
+                        "direct_report_policy", "partial_pause_policy",
+                        "operator_escalation_policy", "continuation_policy",
+                        "ordinary_failure_policy", "continuation_escalation_policy",
                     ):
                         if key not in upgraded_project:
                             upgraded_project[key] = expected_project[key]
@@ -717,6 +819,10 @@ def initialize(target: Path, project_name: str, preferences: Optional[dict] = No
                     previous_dynamic = dict(previous_project_scoping)
                     for key in (
                         "require_goal_confirmation", "max_management_depth",
+                        "report_review_mode",
+                        "governance_model", "operator_role", "routine_administration_owner",
+                        "auditor_authority", "direct_report_policy", "partial_pause_policy",
+                        "operator_escalation_policy",
                         "durable_goal_enabled", "execution_mode", "max_parallel_phase_lanes",
                         "no_evidence_checkpoint_limit", "visual_selection_gate",
                         "visual_review_hub_title",
@@ -775,7 +881,7 @@ def initialize(target: Path, project_name: str, preferences: Optional[dict] = No
         else:
             planned.append((destination, expected))
 
-    if preferences is not None:
+    if preferences is not None and persist_preferences:
         preference_destination = target / ".chief-of-staff" / "preferences.json"
         preference_expected = encoded_json(preferences)
         if preference_destination.is_symlink() or preference_destination.parent.is_symlink():
@@ -814,9 +920,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", default=".", help="Project root; defaults to the current directory")
     parser.add_argument("--project-name", help="Display name; defaults to the target directory name")
-    parser.add_argument(
+    profile_group = parser.add_mutually_exclusive_group()
+    profile_group.add_argument(
         "--preferences",
-        help="Validated project-scoped optional preference profile",
+        help="Validated project-scoped profile; projected and copied into the project",
+    )
+    profile_group.add_argument(
+        "--policy-profile",
+        help="Validated global profile; policies are projected without copying the profile",
     )
     parser.add_argument("--check", action="store_true", help="Validate an initialized project without writing")
     args = parser.parse_args()
@@ -833,15 +944,18 @@ def main() -> int:
         return 2
 
     preferences = None
-    if args.preferences:
+    selected_profile = args.preferences or args.policy_profile
+    if selected_profile:
         try:
-            preference_path = Path(args.preferences).expanduser()
+            preference_path = Path(selected_profile).expanduser()
             if not preference_path.is_absolute():
-                raise PreferenceError("--preferences must be an absolute path")
+                raise PreferenceError("preference profile path must be absolute")
             preferences = read_json(preference_path.resolve())
             require_valid(preferences)
-            if preferences.get("scope") != "project":
+            if args.preferences and preferences.get("scope") != "project":
                 raise PreferenceError("--preferences requires scope project")
+            if args.policy_profile and preferences.get("scope") != "global":
+                raise PreferenceError("--policy-profile requires scope global")
         except PreferenceError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
@@ -854,7 +968,12 @@ def main() -> int:
             return 1
         print(f"Chief of Staff project is valid: {target}")
         return 0
-    return initialize(target, project_name, preferences)
+    return initialize(
+        target,
+        project_name,
+        preferences,
+        persist_preferences=bool(args.preferences),
+    )
 
 
 if __name__ == "__main__":

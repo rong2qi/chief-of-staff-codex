@@ -51,8 +51,23 @@ python3 scripts/configure_preferences.py \
 
 ## Schema and behavior
 
+- `report_review_mode`: `exception_only` lets the project Chief review routine
+  child handoffs and escalates only enumerated exceptions plus final project
+  completion. `all_reports` restores operator review for every milestone/final
+  handoff.
+- `governance_model.enabled`: enables `chair_led_cabinet`; the operator becomes
+  the chair, project Chiefs own routine administration, auditors are evidence-only,
+  non-visual exceptions route through the configured general office, and only the
+  general office plus Creative Director are authoritative TODO sources.
+- `governance_model.continuation_policy.enabled`: requires project Chiefs to
+  execute the strongest evidence-backed safe in-scope continuation. Stopping,
+  preserving a failed state, and delaying remain operator-initiated choices while
+  such a path exists. Only a continuation that itself needs a new permission or
+  a new Chief is escalated; all protected-action and safety boundaries remain.
 - `visual_selection_gate.enabled`: require clickable, non-final previews and an
-  explicit operator choice before final visual implementation.
+  explicit operator choice before final visual implementation. `review_hub_title`
+  identifies the one operator-facing Creative Director task; project Chiefs must
+  not duplicate the same visual request to the general Chief task or TODO.
 - `american_english_coaching.enabled`: add the requested written, spoken, and
   idiom sections. `include_casual_chat` controls whether ordinary conversation
   is included.

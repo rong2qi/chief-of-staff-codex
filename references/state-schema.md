@@ -8,14 +8,25 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `project_name`: initialized project name.
 - `primary_task_title`: generated as `Chief of <project_name>`, for example `Chief of 个人web`.
 - `pin_primary_task`: boolean; when `true`, the Skill pins the main task after renaming it.
-- `report_approval_required`: boolean; when `true`, milestone and final reports remain pending until the user decides through the Chief task.
+- `report_review_mode`: `all_reports` or `exception_only`. `exception_only` lets the Chief approve routine child handoffs while preserving operator gates for enumerated exceptions and final project completion.
+- `report_approval_required`: backward-compatible boolean projection; `true` only for `all_reports`, `false` for `exception_only`.
+- `governance_model`: `standard` or `chair_led_cabinet`.
+- `operator_role`: `operator` or `chair`.
+- `routine_administration_owner`: `project_chief` under `chair_led_cabinet`.
+- `auditor_authority`: `evidence_only` under `chair_led_cabinet`.
+- `direct_report_policy`: `standard` or `chain_of_command`.
+- `partial_pause_policy`: `project` or `affected_surface_only`.
+- `operator_escalation_policy`: `direct` or `statutory_exceptions_via_hubs`.
+- `continuation_policy`: `standard` or `advance_best_safe_in_scope_path`, projected from validated optional governance preferences.
+- `ordinary_failure_policy`: bounded repair behavior; the enabled continuation policy uses `continue_bounded_diagnosis_repair_and_verification`.
+- `continuation_escalation_policy`: `existing_approval_boundaries` by default or `new_permission_or_new_chief` under the enabled continuation policy.
 - `require_goal_confirmation`: boolean; when `true`, implementation waits for explicit user confirmation of the final goal contract.
 - `durable_goal_enabled`: boolean; enables durable goal tracking only after the final goal contract is confirmed.
 - `execution_mode`: `effective_throughput`; bounded parallel delivery with evidence checkpoints.
 - `max_parallel_phase_lanes`: positive integer; independent active phase lanes, default `2`.
 - `no_evidence_checkpoint_limit`: positive integer; stop and self-check after this many evidence-free checkpoints, default `2`.
 - `visual_selection_gate`: `disabled` by public default, or `operator_after_clickable_preview` when a validated optional profile enables the central preview gate.
-- `visual_review_hub_title`: non-empty review-hub title; the public template uses `一人之下`, while a project preference may override it.
+- `visual_review_hub_title`: non-empty review-hub title; the public template uses `Chief of Creative Direction｜创意总监`, while a project preference may override it. The general Chief task and TODO are not visual hubs.
 - `max_management_depth`: positive integer; defaults to `3` for Chief → phase lead → execution role.
 - `auto_advance_low_impact`: boolean; permits the Chief to start the next safe in-scope phase without another approval.
 - `proactive_follow_up`: boolean; requires bounded task waits, full active-task snapshots, and next-phase dispatch while final acceptance is unmet.
@@ -55,6 +66,7 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - Shared fields are `request_id`, `submitted_at`, `summary`, `requested_decision`, `status`, `decided_at`, and `decision_note`; task fields and `report_type` may be `null` for non-report requests.
 - `report_type` is `progress` or `final` for `report_review` and `null` otherwise; `status` is `pending`, `approved`, `changes_requested`, or `superseded`.
 - `request_id` is the deduplication key. Never insert a second record for the same ID; update the existing record after a decision.
+- A `report_review` may include `review_route` (`chief` or `operator`), `reviewer`, `reviewed_at`, `decision_basis`, `evidence_refs`, and `human_gate_reason`. Under `exception_only`, a Chief-approved routine report is stored directly as `approved`; only an enumerated exception remains `pending` for the operator.
 
 Write updates atomically when scripting: write valid JSON to a sibling temporary file and replace the original. Do not erase an existing task or approval record merely because the corresponding task is unavailable in a single status query.
 
@@ -84,5 +96,5 @@ This is the adapter seam. `provider` is `codex-native`; `adapter` is `null` unti
 
 - A project-scoped profile may live at `.chief-of-staff/preferences.json`; global profiles are stored at the absolute location selected during onboarding and referenced by the managed personal `AGENTS.md` block.
 - Public project initialization does not create a profile unless `--preferences` is supplied. Missing or invalid optional preferences do not silently enable personal behavior.
-- Sections cover `visual_selection_gate`, `american_english_coaching`, `audio_playback`, `operator_salutation`, `paused_title_prefix`, and `reminders`; only an explicit `enabled: true` activates a section.
+- The top-level `report_review_mode` selects `exception_only` or `all_reports`. Optional sections cover `governance_model` (including its nested `continuation_policy`), `visual_selection_gate`, `american_english_coaching`, `audio_playback`, `operator_salutation`, `paused_title_prefix`, and `reminders`; only an explicit `enabled: true` activates a section.
 - `audio_playback.storage_root` is absolute. An unavailable path produces text only and must never fall back to a different disk.

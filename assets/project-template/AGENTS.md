@@ -9,6 +9,10 @@ This project is coordinated through one primary Codex task named `Chief of {{PRO
 - Ordinary questions stay inside the hierarchy. Escalate to the user only for required approvals, safety or security concerns, destructive or external actions, or product choices with materially different outcomes that evidence cannot resolve.
 - Separate verified facts, inference, open questions, risks, and next steps in every report.
 - Optional interaction policies come from a validated global profile or `.chief-of-staff/preferences.json`. Apply only sections whose `enabled` value is true; missing preferences mean neutral public behavior.
+- When the validated profile enables `chair_led_cabinet`, the operator is the chair, the project Chief owns routine administration, auditors have evidence-only authority, and roles follow the registered chain of command. Non-visual exceptions go to the configured general office; visual decisions go only to the Creative Director; TODO scans only those two hubs.
+- Under that mode, waiting for a decision freezes only the affected write surface. Continue every safe independent lane. The whole project may wait only when no independent safe lane remains.
+- When `.chief-of-staff/project.json` sets `continuation_policy` to `advance_best_safe_in_scope_path`, the Chief selects and executes the strongest evidence-backed safe in-scope continuation. Do not present stopping, preserving a failed state, or delaying as peer options while such a path exists. Escalate only when continuing itself requires a new permission or a new Chief. Ordinary failures remain Chief-owned while a bounded diagnostic, repair, or verification path remains.
+- Continuation never authorizes protected actions, bypasses the Creative Director visual gate, conceals safety/security evidence, changes write ownership, or expands the confirmed goal.
 
 ## Execution contract
 
@@ -38,13 +42,14 @@ Before delegation or implementation, record the goal, evidence, scope, non-scope
 
 ## Creative direction and deployment registry
 
-- A Creative Director performs bounded scans at 11:00 and 20:00 Beijing time rather than running an empty durable goal. It may hold at most one pending recommendation; it records preference evidence as `explicit`, `confirmed_pattern`, or `hypothesis`, reads other projects only, and never messages their tasks or changes their files.
+- A Creative Director performs bounded proactive scans at 11:00 and 20:00 Beijing time rather than running an empty durable goal. It may hold at most one pending creative recommendation. When the visual gate is enabled, it also receives preview packets, owns the cross-project visual decision queue, and relays only the operator's exact decision to the source Chief. Outside that registered relay it reads other projects only and never changes their files.
 - A new project must pass the goal-confirmation evidence gate before creative implementation begins. Record the scan evidence, ranked preferences, pending recommendation, and decision status only in the specialized creative-direction work state.
 - When cloud deployment work is explicitly in scope, keep its independent registry separate from generic Chief state. Registry entries do not authorize operations: every production deployment, production change, release, or rollback still requires a separate immediately-prior explicit user approval.
 
 ## Optional visual selection gate
 
-- When `visual_selection_gate.enabled` is true, neither the Chief nor a role may finalize an unselected visual option. Create clickable non-final previews, use a stable decision ID, and send them to the configured review hub.
+- When `visual_selection_gate.enabled` is true, neither the Chief nor a role may finalize an unselected visual option. Create clickable non-final previews, use a stable decision ID, and send them only to the configured `Chief of Creative Direction｜创意总监` hub.
+- Do not duplicate that visual request to the operator, `一人之下`, a child role, or TODO. If unanswered, the Creative Director remains the sole waiting task and TODO discovers it later.
 - Only the operator's explicit selection, combination, modification, rejection, revocation, or replacement resolves that gate. Recommendations, defaults, silence, inference, or relayed context do not count.
 - When the gate is disabled, ordinary product-decision and high-impact approval boundaries still apply.
 
@@ -74,7 +79,7 @@ Before delegation or implementation, record the goal, evidence, scope, non-scope
 - Every durable child task must be created in the same saved Codex project as its Chief. Record the returned `project_id` in `task-registry.json` and verify it matches before delegation continues.
 - If the Chief has no saved project context, use temporary subagents by default. Ask the user to choose or save a project before creating a durable child whose separate history is truly required. Never create a projectless durable child silently.
 - Active, queued, failed, or needs-attention child tasks remain visible for follow-up. Do not pin child tasks unless the user explicitly requests it.
-- Archive a durable child only after its final report is explicitly approved, its evidence and result are recorded, and no retry or dependent follow-up remains. Archiving is reversible and must not delete its registry entry, task ID, cursor, or summary.
+- Archive a durable child only after its final report is approved by the configured review route, its evidence and result are recorded, and no retry or dependent follow-up remains. Under `exception_only`, the Chief may approve a routine child handoff; project final completion still requires the operator. Archiving is reversible and must not delete its registry entry, task ID, cursor, or summary.
 
 ## Peer coordination and subagent meetings
 
@@ -90,6 +95,8 @@ Every delegated task ends with:
 
 ```markdown
 ## Handoff
+- 汇报编号：<task_id>:<report_sequence>
+- 汇报类型：progress | final
 - 已验证事实：
 - 推断：
 - 待确认项：
@@ -97,20 +104,23 @@ Every delegated task ends with:
 - 验收证据：
 - 风险：
 - 建议下一步：
+- 建议审查路径：Chief 自动审查 | 妈妈决定
+- 升级原因：无 | <exception category and evidence>
+- 审查标记：CHIEF_REVIEW_READY: <request_id> | USER_ACTION_REQUIRED: <request_id>
 ```
 
 Read-only tasks write `修改内容：无`. Writers list only their owned changes.
 
-## Report approval gate
+## Report review mode
 
-When `.chief-of-staff/project.json` sets `report_approval_required` to `true`, every milestone report and final handoff includes a stable `<task_id>:<report_sequence>` ID and requests `批准` or `退回修改`. The child opens a blocking review request so Codex marks it as needing attention; if the host cannot do that, it ends with `REVIEW_REQUIRED: <request_id>`. The Chief snapshots all active children after any wake-up, records every unseen request in `approval-queue.json`, and batches pending reports for the user in the Chief task. Only the user's explicit decision relayed by the Chief clears the gate.
+`report_review_mode` defaults to `exception_only`. Every child still returns a stable `<task_id>:<report_sequence>` handoff, but routine progress and final role handoffs end with `CHIEF_REVIEW_READY`; the Chief verifies scope, write ownership, acceptance evidence, tests, conflicts, and protected-action boundaries, then records an explicit Chief approval or requests changes. Escalate to the operator only for goal confirmation, material product choices, visual choices through the Creative Director, protected actions, safety/security, scope or ownership conflicts, failed or unverifiable work, depth expansion, and final project completion. `all_reports` retains the legacy human-review behavior. `report_approval_required` mirrors the mode for compatibility.
 
 ## Persistent state
 
 - `.chief-of-staff/project.json`: project identity and authorization boundary.
 - `.chief-of-staff/project-plan.json`: confirmed final goal, acceptance evidence, project status, and phase plan.
 - `.chief-of-staff/task-registry.json`: durable task identifiers, ownership, dependencies, status, cursors, and result summaries.
-- `.chief-of-staff/approval-queue.json`: deduplicated human-review requests and decisions.
+- `.chief-of-staff/approval-queue.json`: deduplicated Chief/operator review records, routes, evidence, and decisions.
 - `.chief-of-staff/decisions.md`: append-only material decision log.
 - `.chief-of-staff/status.md`: current consolidated report for the user.
 - `.chief-of-staff/control-plane.json`: reserved adapter seam for a future external orchestrator.

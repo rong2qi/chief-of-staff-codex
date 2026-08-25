@@ -39,6 +39,11 @@ class PreferenceTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             profile_path = data / "chief-preferences.json"
             profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            self.assertEqual(profile["report_review_mode"], "exception_only")
+            self.assertFalse(profile["governance_model"]["enabled"])
+            self.assertFalse(
+                profile["governance_model"]["continuation_policy"]["enabled"]
+            )
             self.assertFalse(profile["visual_selection_gate"]["enabled"])
             self.assertFalse(profile["american_english_coaching"]["enabled"])
             self.assertFalse(profile["audio_playback"]["enabled"])
@@ -57,6 +62,8 @@ class PreferenceTests(unittest.TestCase):
                 "--preset", "operator-controlled-bilingual",
                 "--scope", "global",
                 "--salutation", "妈妈",
+                "--audio-provider", "macos_say",
+                "--voice", "Samantha",
                 "--audio-rate", "170",
                 "--data-root", data,
                 "--agents-file", agents,
@@ -65,12 +72,20 @@ class PreferenceTests(unittest.TestCase):
             self.assertEqual(run_config(*command).returncode, 0)
             profile = json.loads((data / "chief-preferences.json").read_text())
             self.assertTrue(profile["visual_selection_gate"]["enabled"])
+            self.assertEqual(profile["report_review_mode"], "exception_only")
+            self.assertFalse(profile["governance_model"]["enabled"])
+            self.assertEqual(
+                profile["visual_selection_gate"]["review_hub_title"],
+                "Chief of Creative Direction｜创意总监",
+            )
             self.assertTrue(profile["american_english_coaching"]["include_casual_chat"])
             self.assertEqual(profile["audio_playback"]["clips"], ["written", "spoken"])
-            self.assertEqual(profile["audio_playback"]["provider"], "host_builtin")
-            self.assertIsNone(profile["audio_playback"]["storage_root"])
+            self.assertEqual(
+                profile["audio_playback"]["storage_root"],
+                str((data / "english-audio").resolve()),
+            )
             self.assertEqual(profile["operator_salutation"]["value"], "妈妈")
-            self.assertIsNone(profile["audio_playback"]["voice"])
+            self.assertEqual(profile["audio_playback"]["voice"], "Samantha")
             self.assertEqual(profile["audio_playback"]["rate"], 170)
             content = agents.read_text()
             self.assertEqual(content.count("chief-of-staff-preferences:start"), 1)
@@ -150,6 +165,7 @@ class PreferenceTests(unittest.TestCase):
             self.assertEqual(disabled.returncode, 0, disabled.stderr)
             profile = json.loads((data / "chief-preferences.json").read_text())
             for key in (
+                "governance_model",
                 "visual_selection_gate",
                 "american_english_coaching",
                 "audio_playback",
@@ -158,6 +174,61 @@ class PreferenceTests(unittest.TestCase):
                 "reminders",
             ):
                 self.assertFalse(profile[key]["enabled"], key)
+
+    def test_custom_chair_governance_requires_general_office_and_is_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data = root / "data"
+            data.mkdir()
+            custom = json.loads(
+                (ROOT / "assets/operator-preferences.example.json").read_text()
+            )
+            custom["governance_model"]["enabled"] = True
+            custom["governance_model"]["general_office_thread_id"] = "thread-general-office"
+            custom["governance_model"]["continuation_policy"]["enabled"] = True
+            custom_path = root / "custom.json"
+            custom_path.write_text(json.dumps(custom), encoding="utf-8")
+            result = run_config(
+                "--input", custom_path,
+                "--scope", "global",
+                "--data-root", data,
+                "--agents-file", root / "AGENTS.md",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            profile = json.loads((data / "chief-preferences.json").read_text())
+            self.assertTrue(profile["governance_model"]["enabled"])
+            self.assertEqual(
+                profile["governance_model"]["general_office_thread_id"],
+                "thread-general-office",
+            )
+            self.assertIn("CHAIR_BRIEF_READY", (root / "AGENTS.md").read_text())
+            self.assertIn(
+                "strongest evidence-backed safe in-scope continuation",
+                (root / "AGENTS.md").read_text(),
+            )
+
+    def test_continuation_policy_requires_enabled_governance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data = root / "data"
+            data.mkdir()
+            custom = json.loads(
+                (ROOT / "assets/operator-preferences.example.json").read_text()
+            )
+            custom["governance_model"]["continuation_policy"]["enabled"] = True
+            custom_path = root / "custom.json"
+            custom_path.write_text(json.dumps(custom), encoding="utf-8")
+            result = run_config(
+                "--input", custom_path,
+                "--scope", "global",
+                "--data-root", data,
+                "--agents-file", root / "AGENTS.md",
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn(
+                "enabled continuation_policy requires enabled governance_model",
+                result.stderr,
+            )
 
     def test_missing_custom_data_root_fails_without_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -200,7 +271,7 @@ class PreferenceTests(unittest.TestCase):
                 "--preset", "operator-controlled-bilingual",
                 "--scope", "global",
                 "--salutation", "妈妈",
-                "--audio-provider", "auto",
+                "--audio-provider", "macos_say",
                 "--data-root", data,
                 "--agents-file", agents,
             )
@@ -243,7 +314,7 @@ class PreferenceTests(unittest.TestCase):
             profile = json.loads(
                 (ROOT / "assets/presets/operator-controlled-bilingual.json").read_text()
             )
-            profile["audio_playback"]["provider"] = "auto"
+            profile["audio_playback"]["provider"] = "macos_say"
             profile["audio_playback"]["storage_root"] = str(root / "missing")
             profile_path = root / "profile.json"
             profile_path.write_text(json.dumps(profile), encoding="utf-8")

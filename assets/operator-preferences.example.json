@@ -2,9 +2,31 @@
   "schema_version": 1,
   "preset": "core",
   "scope": "global",
+  "report_review_mode": "exception_only",
+  "governance_model": {
+    "enabled": false,
+    "mode": "chair_led_cabinet",
+    "operator_role": "chair",
+    "general_office_title": "一人之下",
+    "general_office_thread_id": null,
+    "todo_title": "TODO｜待回复 Chief 汇总",
+    "direct_report_policy": "chain_of_command",
+    "auditor_authority": "evidence_only",
+    "partial_pause_policy": "affected_surface_only",
+    "continuation_policy": {
+      "enabled": false,
+      "default_action": "advance_best_safe_in_scope_path",
+      "stop_or_defer_is_operator_initiated": true,
+      "escalate_only_for": [
+        "new_permission",
+        "new_chief"
+      ],
+      "ordinary_failure_policy": "continue_bounded_diagnosis_repair_and_verification"
+    }
+  },
   "visual_selection_gate": {
     "enabled": false,
-    "review_hub_title": "一人之下"
+    "review_hub_title": "Chief of Creative Direction｜创意总监"
   },
   "american_english_coaching": {
     "enabled": false,

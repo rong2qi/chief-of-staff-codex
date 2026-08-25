@@ -44,6 +44,8 @@ After confirmation, create an ordered phase plan and start at least one current-
 
 While the project is unfinished, keep an active or queued phase task unless the project is explicitly `awaiting_user` or verifiably `blocked`. If every task stops before final acceptance, dispatch the next safe in-scope phase immediately.
 
+When the projected continuation policy is `advance_best_safe_in_scope_path`, select and execute the strongest evidence-backed safe in-scope continuation without opening an operator choice. Do not offer stopping, preserving a failed state, or delaying as peer options while such a path exists. Escalate only when continuing itself requires a new permission or a new Chief. Ordinary failure remains Chief-owned while a bounded diagnostic, repair, or verification path remains. The policy does not authorize protected actions, bypass visual selection, conceal safety evidence, transfer ownership, or expand the confirmed goal.
+
 ## Durable task naming and state
 
 Title every durable child task `职务｜工作内容`. Keep the role short and make the work content outcome-oriented, for example `技术负责人｜支付架构决策`.
@@ -56,7 +58,7 @@ Depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role.
 
 For every active phase, monitor all known task IDs with bounded waits. When one task completes, fails, or needs attention, immediately snapshot all active task IDs, then update the registry and phase plan from the complete result set. This prevents the first event from hiding simultaneous progress and ensures an idle phase is either advanced, blocked with evidence, or escalated with an exact decision.
 
-Active durable children may appear in Recents as independently resumable tasks. Keep them visible while queued, running, failed, or needing attention. After an explicitly approved final handoff has been recorded and no retry or dependent follow-up remains, archive the child and mark its registry status `archived`. Preserve identifiers, cursor, evidence, and summary; archiving is reversible and is not deletion.
+Active durable children may appear in Recents as independently resumable tasks. Keep them visible while queued, running, failed, or needing attention. After a final handoff has been approved by the configured review route and no retry or dependent follow-up remains, archive the child and mark its registry status `archived`. Under `exception_only`, the Chief may approve a routine child handoff; final project completion still belongs to the operator. Preserve identifiers, cursor, evidence, and summary; archiving is reversible and is not deletion.
 
 ## Peer-to-peer coordination
 
@@ -70,20 +72,36 @@ When enabled, any durable role may convene a meeting of at most `max_meeting_par
 
 Participants may exchange evidence through the parent or runtime messaging tools, but they cannot create durable tasks or another management layer. The parent waits for every requested participant, reconciles findings by evidence rather than vote, and sends one outcome to registered affected peers and the Chief. Limit deliberation to two proposal/objection rounds and one independent verification; otherwise escalate the unresolved choice to the Chief.
 
-## Report approval gate
+## Report review modes
 
-The approval queue supports `goal_confirmation`, `report_review`, and `depth_expansion`. When `.chief-of-staff/project.json` sets `report_approval_required` to `true`, every milestone report and final handoff requires human review through the Chief task. Routine commentary does not open a gate.
+The approval queue supports `goal_confirmation`, `report_review`, and `depth_expansion`. `project.json.report_review_mode` is authoritative:
+
+- `all_reports`: every milestone report and final handoff requires operator review through the Chief task.
+- `exception_only`: the Chief reviews routine child progress and final handoffs. Operator review is required only for goal confirmation, a material product decision, a visual decision through the Creative Director, a protected action, safety/security judgment, scope or write-ownership conflict, failed or unverifiable acceptance, depth expansion, or final project completion.
+
+`report_approval_required` is retained for compatibility and must equal `true` only for `all_reports`. Routine commentary never opens a gate.
+
+When `governance_model.mode` is `chair_led_cabinet`, preserve the same exception categories but route them by constitutional channel:
+
+- routine evidence review: `CHIEF_REVIEW_READY` to the project Chief;
+- non-visual statutory exception: `CHAIR_BRIEF_READY` to the configured general office;
+- visual decision: preview packet to the configured Creative Director;
+- operator-facing attention: `USER_ACTION_REQUIRED` may be emitted only by the appropriate hub after deduplication and compression.
+
+TODO scans only the general office and Creative Director as authoritative decision sources. It ignores source-project copies and child-task requests. Emergency bypass is limited to Chief safety violations, concealed protected-action risk, or a conflict in which the Chief is a party.
 
 The child task must:
 
 1. Generate a stable `request_id` as `<task_id>:<report_sequence>` and include it in the handoff.
 2. State whether the report is `progress` or `final`, the decision requested, verified evidence, risks, and proposed next action.
-3. Use the host's blocking user-input or review-request mechanism, when available, to request `批准` or `退回修改`. This should place the Codex task in a needs-attention state. Do not continue dependent work while the gate is pending.
-4. If no native request mechanism is available, end the handoff with `REVIEW_REQUIRED: <request_id>` so the Chief can create the human-review request in the main task.
+3. State `review_route: chief` for routine evidence review or `review_route: operator` with one exact exception category and evidence. A child may propose but cannot self-authorize the route; the Chief verifies it.
+4. Under `exception_only`, end routine handoffs with `CHIEF_REVIEW_READY: <request_id>` and do not open a human-attention request. For a verified exception, use the host's blocking input mechanism or `USER_ACTION_REQUIRED: <request_id>`. Under `all_reports`, use the blocking mechanism or legacy `REVIEW_REQUIRED: <request_id>`.
 
-The Chief owns `.chief-of-staff/approval-queue.json`; children never write it. When any watched task completes or needs attention, snapshot all active tasks with a zero-timeout wait before processing results. Insert every unseen report into the queue, set its registry status to `needs_attention`, and batch all pending requests into one numbered user prompt. This sweep-and-deduplicate rule prevents simultaneous reports from being lost when only one task wakes the wait.
+Under enabled `chair_led_cabinet`, replace the direct non-visual `USER_ACTION_REQUIRED` in step 4 with `CHAIR_BRIEF_READY: <request_id>` addressed to the general office. Only the general office can turn it into an operator-facing request. Visual requests follow the Creative Director route instead.
 
-The user remains in the Chief task. After the user decides, the Chief sends an explicit `批准 <request_id>` or `退回修改 <request_id>: <reason>` message to the child, records the decision, and advances the registry status. No response, silence, a newer unrelated message, or the Chief's own judgment counts as approval.
+The Chief owns `.chief-of-staff/approval-queue.json`; children never write it. When any watched task completes or needs attention, snapshot all active tasks with a zero-timeout wait before processing results. Insert every unseen report into the queue with `reviewer`, `review_route`, decision basis, and evidence references. This sweep-and-deduplicate rule prevents simultaneous reports from being lost when only one task wakes the wait.
+
+For `exception_only`, the Chief verifies that the report stayed in scope, touched only its owned surface, passed stated acceptance checks, contains no conflicting evidence, and triggers no exception. It then records an explicit Chief approval or sends `退回修改 <request_id>: <reason>` to the child. If an exception applies, the Chief records `review_route: operator`, emits one exact `USER_ACTION_REQUIRED`, and waits. For `all_reports`, every milestone/final report follows that operator path. Silence and unrelated messages never count as operator approval.
 
 Approving a report acknowledges that handoff; it does not authorize any protected action listed in `approval_required`. Request those permissions separately immediately before the action.
 
@@ -102,7 +120,9 @@ Every delegated task ends with:
 - 验收证据：...
 - 风险：...
 - 建议下一步：...
-- 批复请求：批准 | 退回修改
+- 建议审查路径：Chief 自动审查 | 妈妈决定
+- 升级原因：无 | <exception category and evidence>
+- 审查标记：CHIEF_REVIEW_READY: <request_id> | USER_ACTION_REQUIRED: <request_id>
 ```
 
 Read-only roles must state `修改内容：无`. A writer lists only its owned changes. The Chief of Staff reconciles disagreements against evidence; it does not decide by majority vote.
@@ -115,6 +135,7 @@ Escalate to the user only for:
 - production, release, payment, or external-message actions;
 - permission or access expansion;
 - security or safety risks needing human judgment;
-- a product choice with meaningfully different outcomes that evidence cannot resolve.
+- a product choice with meaningfully different outcomes that evidence cannot resolve;
+- final project acceptance and completion.
 
-If the same blocker survives the initial attempt plus two focused follow-ups, stop and report evidence, attempted remedies, and the exact decision needed.
+If the same blocker survives the initial attempt plus two focused follow-ups, reassess the remaining safe in-scope paths. Under the enabled continuation policy, continue with the strongest evidenced alternative; stop and report only when no safe authorized path remains or continuing itself requires a new permission or a new Chief. Otherwise report evidence, attempted remedies, and the exact decision needed.
