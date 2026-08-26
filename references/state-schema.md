@@ -7,7 +7,7 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `schema_version`: currently `1`.
 - `project_name`: initialized project name.
 - `primary_task_title`: generated as `Chief of <project_name>`, for example `Chief of 个人web`.
-- `pin_primary_task`: boolean; when `true`, the Skill pins the main task after renaming it.
+- `pin_primary_task`: fixed `true` for an active Chief. After pinning or successor migration, a fresh `list_threads` result must contain the exact Chief task ID in `pinnedThreads`; the pin operation receipt alone is insufficient.
 - `report_review_mode`: `all_reports` or `exception_only`. `exception_only` lets the Chief approve routine child handoffs while preserving operator gates for enumerated exceptions and final project completion.
 - `report_approval_required`: backward-compatible boolean projection; `true` only for `all_reports`, `false` for `exception_only`.
 - `governance_model`: `standard` or `chair_led_cabinet`.
@@ -21,6 +21,11 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `ordinary_failure_policy`: bounded repair behavior; the enabled continuation policy uses `continue_bounded_diagnosis_repair_and_verification`.
 - `continuation_escalation_policy`: `existing_approval_boundaries` by default or `new_permission_or_new_chief` under the enabled continuation policy.
 - `require_goal_confirmation`: boolean; when `true`, implementation waits for explicit user confirmation of the final goal contract.
+- `project_classification_policy`: fixed `classify_after_goal_confirmation`.
+- `deliverable_product_discovery_policy`: fixed `required_before_production`.
+- `production_start_policy`: fixed `deny_until_product_discovery_passed_or_coordination_exempt`.
+- `product_discovery_state_file`: fixed `.chief-of-staff/product-discovery.json`.
+- `legacy_allowlist_digest`: `null` for a new project; a legacy migration stores the SHA-256 digest of its one-time phase/task allowlist so later allowlist expansion fails validation.
 - `durable_goal_enabled`: boolean; enables durable goal tracking only after the final goal contract is confirmed.
 - `execution_mode`: `effective_throughput`; bounded parallel delivery with evidence checkpoints.
 - `max_parallel_phase_lanes`: positive integer; independent active phase lanes, default `2`.
@@ -41,6 +46,25 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `task_title_pattern`: durable task naming convention.
 - `approval_required`: actions that always require explicit user authorization.
 
+## product-discovery.json
+
+This mutable file is the single source of truth for project classification and the product-discovery gate. `project.json` contains only the fixed public policy.
+
+- `classification_status`: `pending`, `classified`, or `legacy_unclassified`.
+- `project_classification`: `unclassified`, `deliverable_project`, or `coordination_only`.
+- `classification_reason`, `classified_at`, and `classification_evidence_refs`: decision basis and traceable evidence. A coordination exemption also requires non-empty `exemption_reason`.
+- `product_manager_required`: `null` before classification, `true` for deliverable projects, and `false` for coordination-only projects.
+- `gate_status`: `awaiting_classification`, `legacy_pending`, `awaiting_product_manager`, `in_progress`, `blocked`, `passed`, or `exempt`.
+- `product_manager`: owner ID/kind, fixed management depth `2`, runtime mode, and any runtime limitation. The Product Manager is a phase lead, not a Chief or second control plane.
+- `lanes`: exactly `project_initiation`, `requirements_analysis`, `market_research`, and `architecture_feasibility`. Each lane records status, execution mode, owner, depth, immutable `delegation_allowed: false`, artifact refs, and evidence refs.
+- `required_deliverables`: the project charter; market/competitor research; user research/personas; business/policy feasibility; requirements inventory/prioritization; advisory architecture feasibility; and risk/evidence-gap/MVP recommendation. Every item records status plus artifact and evidence refs.
+- `synthesis_coverage`: fixed boolean coverage for problem definition; goals/non-goals/metrics; market/competitors; users/pain points/personas; policy/business feasibility; multi-source requirements and tiering; false/duplicate/high-difficulty rejection evidence; advisory architecture; risks/gaps/MVP; and the evidence index. A passed gate requires every value to be `true`.
+- `evidence_index`: uniquely identified `verified_fact`, `assumption`, or `open_question` entries. Every verified fact requires a traceable source, verification method, and verification time. Assumptions and open questions remain explicitly unverified evidence-gap records. Lane and deliverable evidence refs must resolve to evidence-index IDs, and a passed gate requires at least one verified-fact reference for every lane and deliverable; artifact refs must be traceable, and local `repo://` refs must resolve inside the project root.
+- `gate_decision`: proceed/conditional/no-go decision, conditions, material-direction state, review route/status, and decision reference. `passed` requires complete evidence and an approved review; unresolved `operator_required` cannot pass.
+- `guardrails`: fixed `advisory_non_binding` architecture output, `creative_director_only` visual direction, and `separate_explicit_approval` for protected actions.
+- `legacy_allowlist`: migration-time phase/task IDs that alone may use `legacy_existing`. It is an audit snapshot, not a label that new work may claim.
+- `migration_note`: `null` for new projects or a non-private legacy migration explanation.
+
 ## project-plan.json
 
 - `goal_status`: `unconfirmed` or `confirmed`.
@@ -48,14 +72,14 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `final_goal`, `deliverables`, `non_goals`, and `constraints`: the user-confirmed goal contract.
 - Each acceptance criterion contains a unique `criterion_id`, `description`, `status` (`pending`, `verified`, or `failed`), and an evidence array.
 - `confirmed_at` and `current_phase_id` are strings or `null`.
-- Each phase contains a unique `phase_id`, title, objective, status, acceptance criteria, task IDs, and result summary.
+- Each phase contains a unique `phase_id`, title, objective, status, `phase_class`, acceptance criteria, task IDs, and result summary. `phase_class` is `goal_discovery`, `product_discovery`, `production`, `coordination`, or migration-allowlisted `legacy_existing`.
 - `completed` is valid only for a confirmed goal with at least one acceptance criterion and non-empty evidence on every verified criterion.
 
 ## task-registry.json
 
 - `schema_version`: currently `1`.
 - `tasks`: array of durable task records.
-- Each task record requires `task_id`, `title`, `role`, `objective`, and `status` strings; `host_id`, `project_id`, `last_cursor`, `result_summary`, `parent_task_id`, and `phase_id` are strings or `null`; `management_depth` is a positive integer; `write_surface`, `depends_on`, and `coordination_with` are arrays of task-ID strings.
+- Each task record requires `task_id`, `title`, `role`, `objective`, `status`, and `work_class` strings; `host_id`, `project_id`, `last_cursor`, `result_summary`, `parent_task_id`, and `phase_id` are strings or `null`; `management_depth` is a positive integer; `write_surface`, `depends_on`, and `coordination_with` are arrays of task-ID strings. `work_class` is `goal_discovery`, `product_discovery`, `production_execution`, `coordination_only`, or migration-allowlisted `legacy_existing`.
 - Unknown additional keys must be preserved so a future adapter can extend the format.
 
 ## approval-queue.json
@@ -77,7 +101,7 @@ This is the adapter seam. `provider` is `codex-native`; `adapter` is `null` unti
 ## Markdown logs
 
 - `decisions.md` is append-only for material decisions. Record date, decision, evidence, alternatives, owner, and consequences.
-- `status.md` is the replaceable consolidated report shown to the user. Preserve the headings for final goal, current phase, facts, inference, open questions, pending reports, active roles, delivery gap, risks, next steps, and next checkpoint.
+- `status.md` is the replaceable consolidated report shown to the user. Validation requires the headings for final goal, current phase, product classification/gate, facts, inference, open questions, pending reports, active roles, delivery gap, risks, next steps, and next checkpoint. Legacy initialization inserts the missing product-gate heading without overwriting other status content.
 
 ## throughput.json
 

@@ -34,6 +34,16 @@ Before delegation or implementation, record the goal, evidence, scope, non-scope
 - The Chief is the sole writer of `project-plan.json`, `task-registry.json`, `approval-queue.json`, and consolidated status. Low-impact in-scope phases advance automatically; protected actions retain their separate approval requirements.
 - Use `/goal` only after the final goal is confirmed, acceptance criteria are testable, and no human approval gate remains. A goal command is never a substitute for a required user decision.
 
+## Product classification and discovery gate
+
+- After the initial mission and goal boundary are confirmed, classify the project in `.chief-of-staff/product-discovery.json` before creating another phase or role. `deliverable_project` creates or materially changes a product, service, code, design, content asset, or other acceptance-tested deliverable. `coordination_only` is limited to synchronization, pushing an already-decided change, meeting summaries, filing/process follow-up, or read-only audit/aggregation and requires a concrete exemption reason.
+- A scope expansion from coordination into product creation immediately invalidates the exemption. Reclassify as `deliverable_project`, appoint one Product Manager phase lead at management depth 2, and complete the gate before production execution.
+- The Product Manager is not a Chief and does not create a second control plane. It owns four bounded evidence lanes: project initiation, requirements analysis, market research, and advisory architecture feasibility. Each temporary helper is depth 3, read-only by default, cannot delegate again, and cannot create a durable role. If the runtime lacks subagents, the Product Manager completes all four lanes in one task, records the runtime limitation, and preserves separate artifacts and evidence for every lane.
+- Before the gate passes, permit only goal clarification, product-discovery research, and reversible planning. Do not create or start engineering, design, content production, or another production-execution role or phase. Run `python3 scripts/init_project.py --target <project-root> --check` immediately before any production task is created or started; a nonzero result is a hard stop.
+- Gate evidence never invents interviews, surveys, market data, or policy findings. Human outreach, survey delivery, paid data, restricted access, and every protected action retain their separate approval gates. Architecture discovery is advisory and cannot bind the later Technical Lead. Experience goals may be recorded, but clickable NON-FINAL visual options still go only to the Creative Director.
+- Every verified fact records a traceable source, verification method, and verification time; assumptions/open questions remain explicitly unverified. Lane/deliverable evidence refs must resolve to evidence-index IDs and each needs at least one verified fact before passage. Local artifact or source refs use existing, in-project `repo://` paths. Every fixed synthesis-coverage topic must be true before the gate passes.
+- Under `exception_only`, the project Chief reviews routine Product Manager and helper evidence. Escalate only a material unresolved product direction, safety/permission/ownership conflict, protected action, or final project acceptance. Continuation policy advances safe discovery work but never treats a pending gate as production authorization.
+
 ## Effective throughput and durable goals
 
 - The default execution mode is `effective_throughput`: run at most `max_parallel_phase_lanes` independent lanes (default two), with one writer per surface and an explicit dependency boundary.
@@ -57,7 +67,7 @@ Before delegation or implementation, record the goal, evidence, scope, non-scope
 
 - Use the configured salutation only when `operator_salutation.enabled` is true.
 - Add American-English coaching only when `american_english_coaching.enabled` is true, and include casual chat only when its dedicated flag is true.
-- Generate separate written and spoken audio only when `audio_playback.enabled` is true. Use only its configured storage root; unavailable audio falls back to text without writing elsewhere.
+- With `provider: host_builtin`, keep written/spoken text available to the host voice or read-aloud control and generate no files. Only opt-in `auto` or `macos_say` renders separate written/spoken attachments in the configured storage root; unavailable audio falls back to text without writing elsewhere.
 - Decorate a Chief title on explicit pause/resume only when `paused_title_prefix.enabled` is true. Never infer pause from idleness, `awaiting_user`, `blocked`, or a report gate.
 
 ## Write ownership
@@ -77,6 +87,8 @@ Before delegation or implementation, record the goal, evidence, scope, non-scope
 ## Project placement and task lifecycle
 
 - Every durable child task must be created in the same saved Codex project as its Chief. Record the returned `project_id` in `task-registry.json` and verify it matches before delegation continues.
+- The active Chief must remain pinned. A pin operation receipt is not success evidence: call `list_threads` and require the Chief's exact task ID in `pinnedThreads`. Record an independent-check failure as `pin_verification_failed`.
+- A `MIGRATION_READY` successor may take control only after parity and an independent `list_threads` check shows its exact task ID in `pinnedThreads`, and that check must occur before takeover, authoritative-entry switching, or predecessor archival. On failure, do not accept takeover; at a safe boundary archive the old Chief with reason `unable_to_pin`, keep predecessors recoverable, create exactly one replacement in the same saved project and work state, transfer the goal, phase, pending approvals/TODOs, write ownership, evidence, and pause state, then repeat exact-ID verification. Never delete a predecessor, run duplicate Chiefs, change scope or pause state, or bypass an approval through pin inheritance.
 - If the Chief has no saved project context, use temporary subagents by default. Ask the user to choose or save a project before creating a durable child whose separate history is truly required. Never create a projectless durable child silently.
 - Active, queued, failed, or needs-attention child tasks remain visible for follow-up. Do not pin child tasks unless the user explicitly requests it.
 - Archive a durable child only after its final report is approved by the configured review route, its evidence and result are recorded, and no retry or dependent follow-up remains. Under `exception_only`, the Chief may approve a routine child handoff; project final completion still requires the operator. Archiving is reversible and must not delete its registry entry, task ID, cursor, or summary.
@@ -119,6 +131,7 @@ Read-only tasks write `修改内容：无`. Writers list only their owned change
 
 - `.chief-of-staff/project.json`: project identity and authorization boundary.
 - `.chief-of-staff/project-plan.json`: confirmed final goal, acceptance evidence, project status, and phase plan.
+- `.chief-of-staff/product-discovery.json`: project classification, Product Manager ownership, four evidence lanes, required discovery deliverables, evidence index, legacy allowlist, and gate decision.
 - `.chief-of-staff/task-registry.json`: durable task identifiers, ownership, dependencies, status, cursors, and result summaries.
 - `.chief-of-staff/approval-queue.json`: deduplicated Chief/operator review records, routes, evidence, and decisions.
 - `.chief-of-staff/decisions.md`: append-only material decision log.

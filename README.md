@@ -21,9 +21,10 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 ### 核心能力
 
 - 每个项目拥有可区分的主任务名称：`Chief of <项目名>`。
-- 主任务在初始化后尝试置顶，且只有精确 task ID 出现在新的 `pinnedThreads` 查询中才报告成功。
+- 现任 Chief 与通过接管核验的 successor 都必须保持置顶；操作回执不算证据，只有精确 task ID 出现在新的 `pinnedThreads` 查询中才报告成功或切换权威入口。
 - 默认采用 `exception_only`：Chief 验收普通岗位里程碑和最终交接，只有列明例外与项目最终完成才进入操作者批复；Chief 会批量收集同时到达的汇报，避免遗漏。
 - Chief 必须先与你确认最终目标、交付物和验收标准；未达成最终验收前持续分阶段推进。
+- 目标确认后必须分类：交付型项目先由 depth-2 产品经理完成四路产品发现与立项门，才可创建或启动生产岗位；纯同步/推送、会议总结、备案/流程推进或只读汇总可记录理由后豁免，范围扩展时立即重分类。
 - 默认三层管理结构，阶段负责人可以管理执行岗位；增加第四层前必须申请。
 - 用户只与一个统一负责的主任务交互。
 - 长期任务统一命名为 `职务｜工作成果`。
@@ -143,6 +144,11 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
   "continuation_policy": "standard",
   "ordinary_failure_policy": "bounded_repair_cycle",
   "continuation_escalation_policy": "existing_approval_boundaries",
+  "project_classification_policy": "classify_after_goal_confirmation",
+  "deliverable_product_discovery_policy": "required_before_production",
+  "production_start_policy": "deny_until_product_discovery_passed_or_coordination_exempt",
+  "product_discovery_state_file": ".chief-of-staff/product-discovery.json",
+  "legacy_allowlist_digest": null,
   "require_goal_confirmation": true,
   "durable_goal_enabled": true,
   "execution_mode": "effective_throughput",
@@ -163,7 +169,21 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 }
 ```
 
-Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。所有新 Chief 默认将 `pin_primary_task` 设为 `true`；操作者以后可手动取消置顶。置顶接口返回成功并不够，Skill 必须再次读取任务列表，并确认精确 task ID 出现在 `pinnedThreads` 后才能报告成功。若回查失败，当前 Chief 继续完成已授权工作但标记为 `pin_verification_failed`；在安全交接点归档并注明 `unable_to_pin`，随后只在同一 saved project 创建一个接续 Chief，完整交接目标、阶段、审批、TODO 与写入权并重新验证置顶。旧任务保留，不得同时创建重复控制面。
+初始化时 `.chief-of-staff/product-discovery.json` 为 `pending/unclassified`，不会猜测项目类型。目标确认后的纯协调项目示例：
+
+```json
+{
+  "classification_status": "classified",
+  "project_classification": "coordination_only",
+  "product_manager_required": false,
+  "exemption_reason": "仅同步并推送已经批准的变更",
+  "gate_status": "exempt"
+}
+```
+
+交付型项目改用 `deliverable_project`，任命产品经理并完成四条证据线后，`gate_status` 才能变为 `passed`。
+
+Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。所有 Chief 都将 `pin_primary_task` 设为 `true` 并在任职期间保持置顶。置顶接口返回成功并不够，Skill 必须调用 `list_threads`，确认精确 task ID 出现在 `pinnedThreads` 后才能报告成功。若回查失败，记录 `pin_verification_failed`；在安全交接点归档旧 Chief 并注明 `unable_to_pin`，随后只在同一 saved project 和既有工作状态中创建一个接续 Chief，完整交接目标、阶段、未决审批/TODO、写入权、证据与暂停状态，再以精确 ID 重新验证。旧任务保留，不得运行重复控制面、改变范围或暂停状态、或借置顶绕过审批。
 
 初始化器还会创建：
 
@@ -179,6 +199,7 @@ AGENTS.md
 .chief-of-staff/
 ├── project.json
 ├── project-plan.json
+├── product-discovery.json
 ├── task-registry.json
 ├── approval-queue.json
 ├── decisions.md
@@ -202,8 +223,11 @@ python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
 ```text
 用户
 └── Chief of 个人web
-    ├── 产品负责人｜定义需求
-    │   └── 临时用户研究 subagents
+    ├── 产品经理｜产品发现与立项（交付型项目必需）
+    │   ├── 项目立项 subagent
+    │   ├── 需求分析 subagent
+    │   ├── 市场调研 subagent
+    │   └── 架构可行性 subagent
     ├── 技术负责人｜完成架构决策
     │   ├── 安全专家 subagent
     │   └── 接口专家 subagent
@@ -253,6 +277,14 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 可选启用 `governance_model.continuation_policy` 后，项目 Chief 必须选择证据最强、在范围内且安全的继续路径并直接执行。只要这种路径仍存在，就不把停止、保留失败状态或延期列成需要操作者选择的并列方案；普通失败继续由 Chief 通过限界诊断、修复和复检负责。只有继续本身需要新增权限或创建新 Chief 时才报备。该规则不会授权高影响操作、绕过视觉门、隐藏安全证据、改变写入权或扩张已确认目标。
 
+### 产品分类与产品发现门
+
+初始使命、目标边界和验收确认后，Chief 必须先写入 `.chief-of-staff/product-discovery.json`。创建或实质改变产品、服务、代码、设计、内容资产或其他需验收交付物的项目属于 `deliverable_project`；仅同步或推送既定变更、会议总结、备案/流程推进、只读审计或汇总可列为 `coordination_only`，但必须记录具体豁免理由。协调型项目一旦扩展到产品创作或实质交付，豁免立即失效并重新分类。
+
+交付型项目必须任命一个 depth-2 产品经理阶段负责人。产品经理不是 Chief，也不形成第二控制面；其四条必备证据线是项目立项、需求分析、市场调研和非绑定的架构可行性。临时 helper 固定为 depth 3，不能继续委派或创建长期岗位；运行时没有 subagent 时，产品经理可在单任务中分别完成四条证据线，但必须记录运行限制，不能省略产出。综合结论覆盖目标/非目标/指标、市场与竞品、用户与痛点、政策和商业可行性、需求分层与剔除依据、用户画像、技术约束、风险/证据缺口、推荐 MVP 和可追溯证据索引。
+
+产品门通过前，只能进行目标澄清、只读发现、需求研究和可逆规划；创建或启动工程、设计、内容生产等岗位前必须运行初始化器的 `--check`，非零结果就是硬阻断。不得伪造访谈、问卷或市场数据；真人外联、问卷发送、付费数据、受限访问和其他高影响操作仍需独立授权。架构线只提供可行性、接口、约束和风险，不替代后续技术负责人的最终架构权；体验目标可记录，但可点击 NON-FINAL 视觉选项仍只送创意总监。旧项目缺字段时迁移为 `legacy_unclassified/legacy_pending`，不会伪造已通过，并必须在下一次新增生产阶段前完成分类和必要产品门。
+
 ### 目标闭环与主动推进
 
 初始化后，Chief 会先根据项目上下文提出最终目标、交付物、验收标准、非目标和约束，请你确认或修改。新项目在你明确确认前只允许为澄清目标进行有限的只读侦察。旧项目迁移时允许已经开始的非高影响任务完成，但不会派发新任务或进入新阶段。确认结果和逐项验收证据保存在 `project-plan.json`。
@@ -275,7 +307,7 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 仓库同时提供 `context-handoff` Skill。它只使用最新输入 token 与模型上下文窗口的比值：75%刷新检查点，85%在安全边界创建 `原对话名｜续N`，95%进入紧急迁移。累计 token 和账户限额不会被误当成上下文占用。
 
-项目迁移包保存在 `.codex/context-migrations/`，无项目任务保存在 `~/.codex/context-migrations/`。新对话必须返回 `MIGRATION_READY` 并核对目标、审批、任务关系、写入权、Git 状态、证据、下一步和全局规则，之后旧对话才归档；旧对话不会删除。若原生压缩降低占用则取消过期触发；若无法证明同一脏工作树连续性则保留旧对话并请求人工选择。
+项目迁移包保存在 `.codex/context-migrations/`，无项目任务保存在 `~/.codex/context-migrations/`。新对话必须返回 `MIGRATION_READY` 并核对目标、审批、任务关系、写入权、Git 状态、证据、下一步、暂停状态和全局规则。完成 parity 后、接受接管/切换权威入口/归档 predecessor 前，必须先置顶 successor，再用 `list_threads` 独立确认 successor 的精确 task ID 位于 `pinnedThreads`；`pinned: true` 只表示操作已受理。失败则记录 `pin_verification_failed`，不接受接管，并按安全边界的同项目单 replacement 流程处理。旧对话不会删除，不得重复 Chief、改变范围、恢复暂停或绕过审批。若原生压缩降低占用则取消过期触发；若无法证明同一脏工作树连续性则保留旧对话并请求人工选择。
 
 ### 当前限制
 
@@ -298,9 +330,10 @@ Each durable task can use installed Skills automatically and can summon temporar
 ### Key features
 
 - A distinguishable main task name for every project: `Chief of <project name>`.
-- Pin verification after initialization: success is reported only when the exact task ID appears in a fresh `pinnedThreads` listing.
+- The current Chief and every verified successor must remain pinned. An operation receipt is not evidence; success or authority transfer requires the exact task ID in a fresh `pinnedThreads` listing.
 - `exception_only` review by default: the Chief accepts routine milestone and role-final handoffs, while enumerated exceptions and final project completion go to the operator; simultaneous updates are collected in a batch.
 - Mandatory user confirmation of the final goal, deliverables, and acceptance criteria before implementation.
+- Mandatory post-confirmation classification: deliverable projects must pass a four-lane, depth-2 Product Manager discovery gate before production roles are created or started. Pure synchronization/push, meeting-summary, filing/process, or read-only aggregation work may be exempt with a recorded reason and must be reclassified if scope expands.
 - Continuous phase dispatch until final acceptance, with a three-level management hierarchy by default.
 - One accountable main task for user communication.
 - Durable tasks named `Role｜Work outcome`.
@@ -405,6 +438,11 @@ When no project name is supplied, the initializer uses the project root director
   "continuation_policy": "standard",
   "ordinary_failure_policy": "bounded_repair_cycle",
   "continuation_escalation_policy": "existing_approval_boundaries",
+  "project_classification_policy": "classify_after_goal_confirmation",
+  "deliverable_product_discovery_policy": "required_before_production",
+  "production_start_policy": "deny_until_product_discovery_passed_or_coordination_exempt",
+  "product_discovery_state_file": ".chief-of-staff/product-discovery.json",
+  "legacy_allowlist_digest": null,
   "require_goal_confirmation": true,
   "durable_goal_enabled": true,
   "execution_mode": "effective_throughput",
@@ -425,7 +463,21 @@ When no project name is supplied, the initializer uses the project root director
 }
 ```
 
-The Skill reads `primary_task_title` and renames the current main task to that exact value. Every new Chief defaults `pin_primary_task` to `true`; the operator may unpin it later. A successful pin API response is not enough: the exact task ID must also appear in a fresh `pinnedThreads` listing before success is reported. If that independent check fails, the current Chief completes its already-authorized work with `pin_verification_failed`; at a safe handoff boundary it is archived with reason `unable_to_pin`, and exactly one successor Chief is created in the same saved project with the goal, phase, approvals, TODOs, and write ownership transferred. The original remains recoverable, and no duplicate control plane may run concurrently.
+At initialization, `.chief-of-staff/product-discovery.json` is `pending/unclassified`; the initializer never guesses the project type. A coordination-only example after goal confirmation is:
+
+```json
+{
+  "classification_status": "classified",
+  "project_classification": "coordination_only",
+  "product_manager_required": false,
+  "exemption_reason": "Only synchronize and push an already-approved change",
+  "gate_status": "exempt"
+}
+```
+
+A deliverable project uses `deliverable_project`, appoints the Product Manager, and can reach `gate_status: passed` only after all four evidence lanes are complete.
+
+The Skill reads `primary_task_title` and renames the current main task to that exact value. Every Chief sets `pin_primary_task` to `true` and remains pinned while authoritative. A successful pin API response is not enough: `list_threads` must show the exact task ID in `pinnedThreads` before success is reported. If that independent check fails, record `pin_verification_failed`; at a safe handoff boundary archive the old Chief with reason `unable_to_pin`, then create exactly one successor in the same saved project and existing work state with the goal, phase, pending approvals/TODOs, write ownership, evidence, and pause state transferred, and verify its exact ID. The original remains recoverable; no duplicate control plane, scope/pause change, or approval bypass is allowed.
 
 The initializer also creates:
 
@@ -441,6 +493,7 @@ AGENTS.md
 .chief-of-staff/
 ├── project.json
 ├── project-plan.json
+├── product-discovery.json
 ├── task-registry.json
 ├── approval-queue.json
 ├── decisions.md
@@ -464,8 +517,11 @@ python3 ~/.codex/skills/chief-of-staff/scripts/init_project.py \
 ```text
 User
 └── Chief of Personal Web
-    ├── Product Lead｜Define requirements
-    │   └── Temporary research subagents
+    ├── Product Manager｜Discovery and charter (required for deliverables)
+    │   ├── Project initiation subagent
+    │   ├── Requirements analysis subagent
+    │   ├── Market research subagent
+    │   └── Architecture feasibility subagent
     ├── Technical Lead｜Decide architecture
     │   ├── Security subagent
     │   └── API subagent
@@ -515,6 +571,14 @@ Routine roles use `CHIEF_REVIEW_READY`. Non-visual statutory exceptions use `CHA
 
 When `governance_model.continuation_policy` is enabled, each project Chief executes the strongest evidence-backed safe in-scope continuation. Stopping, preserving a failed state, and delaying are not peer options while such a path exists. Only a continuation that itself needs a new permission or a new Chief is escalated. Protected actions, visual gates, safety disclosure, write ownership, and the confirmed goal remain unchanged boundaries.
 
+### Product classification and discovery gate
+
+After the initial mission, goal boundary, and acceptance contract are confirmed, the Chief records classification in `.chief-of-staff/product-discovery.json`. A project that creates or materially changes a product, service, code, design, content asset, or another acceptance-tested deliverable is a `deliverable_project`. Synchronizing or pushing an already-decided change, summarizing a meeting, advancing a filing/process, or performing read-only audit/aggregation may be `coordination_only`, but requires a concrete exemption reason. Any expansion into product creation or material delivery invalidates the exemption and triggers reclassification.
+
+A deliverable project appoints one depth-2 Product Manager phase lead. The Product Manager is not a Chief and does not create a second control plane. Its four required evidence lanes are project initiation, requirements analysis, market research, and non-binding architecture feasibility. Temporary helpers are depth 3 and cannot delegate again or create durable roles. If subagents are unavailable, the Product Manager may complete all four lanes in one task only with a recorded runtime limitation and separate evidence for every lane. The synthesis covers the charter, goals/non-goals/metrics, market and competitors, users and pain points, policy and business feasibility, prioritized and rejected requirements, personas, technical constraints, risks and evidence gaps, a recommended MVP, and a traceable evidence index.
+
+Before the gate passes, only goal clarification, read-only discovery, requirements research, and reversible planning are allowed. The initializer's `--check` is a required fail-closed preflight before creating or starting engineering, design, content-production, or other production roles. Interviews, surveys, and market facts must never be invented; outreach, survey delivery, paid data, restricted access, and every protected action retain separate approval gates. Architecture discovery is advisory and cannot bind the later Technical Lead. Experience goals may be recorded, but clickable NON-FINAL visual options remain exclusive to the Creative Director. Existing projects missing these fields migrate to `legacy_unclassified/legacy_pending`, never to a fabricated pass, and must classify before adding the next production phase.
+
 ### Goal closure and proactive progression
 
 After initialization, the Chief drafts the final goal, deliverables, acceptance criteria, non-goals, and constraints from available project context and asks you to confirm or revise them. A new project permits only bounded read-only discovery before explicit confirmation. During migration, already-running non-high-impact tasks may finish, but no new task or phase starts. The confirmed contract and criterion-level evidence live in `project-plan.json`.
@@ -529,7 +593,7 @@ Every unfinished-project report includes the final goal, current phase, verified
 
 The repository also includes `context-handoff`. It uses only newest input tokens divided by the model context window: checkpoint at 75%, create `Original title｜Continuation N` at a safe boundary at 85%, and prioritize migration at 95%. Cumulative and account usage are ignored.
 
-Project bundles live in `.codex/context-migrations/`; projectless bundles live in `~/.codex/context-migrations/`. A successor must return `MIGRATION_READY` and match goals, approvals, task graph, write ownership, Git state, evidence, next action, and global instructions before the retained predecessor is archived. Native compaction cancels stale triggers; unproven dirty-worktree continuity requires a user decision.
+Project bundles live in `.codex/context-migrations/`; projectless bundles live in `~/.codex/context-migrations/`. A successor must return `MIGRATION_READY` and match goals, approvals, task graph, write ownership, Git state, evidence, next action, pause state, and global instructions. After parity but before takeover, authoritative-entry switching, or predecessor archival, pin the successor and independently use `list_threads` to require its exact task ID in `pinnedThreads`; `pinned: true` is only an operation receipt. A failed check records `pin_verification_failed`, denies takeover, and uses the safe-boundary same-project single-replacement path. Predecessors remain recoverable; migration cannot create duplicate Chiefs, change scope or pause state, or bypass approval. Native compaction cancels stale triggers; unproven dirty-worktree continuity requires a user decision.
 
 ### Current limits
 
@@ -546,7 +610,7 @@ Project bundles live in `.codex/context-migrations/`; projectless bundles live i
 - `assets/project-template/`: generated project contract and agent profiles / 项目契约与角色配置模板。
 - `assets/operator-preferences.example.json`: privacy-safe core defaults / 隐私安全的核心默认偏好。
 - `assets/presets/`: opt-in preference presets / 可主动启用的偏好预设。
-- `references/`: coordination protocol and persistent state schema / 协调协议与持久状态结构。
+- `references/`: coordination protocol, enforceable product-discovery governance, and persistent state schema / 协调协议、可执行产品发现治理与持久状态结构。
 - `references/operator-preferences.md`: onboarding, schema, and privacy behavior / 首次配置、结构与隐私行为。
 - `assets/reminder-policy.example.json`: optional personal reminder policy example / 可选的个人提醒策略示例。
 - `agents/openai.yaml`: Codex UI metadata and implicit invocation policy / Codex 界面元数据与自动调用策略。

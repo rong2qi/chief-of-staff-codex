@@ -8,6 +8,12 @@
 
 - Goal confirmation.
 
+## 产品分类与发现门
+
+- Classification: pending after goal confirmation.
+- Product discovery gate: awaiting classification.
+- Production execution: not authorized.
+
 ## 已验证事实
 
 - Project coordination initialized.

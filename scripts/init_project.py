@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_ROOT = SKILL_ROOT / "assets" / "project-template"
 MUTABLE_STATE = {
     Path(".chief-of-staff/project-plan.json"),
+    Path(".chief-of-staff/product-discovery.json"),
     Path(".chief-of-staff/task-registry.json"),
     Path(".chief-of-staff/approval-queue.json"),
     Path(".chief-of-staff/decisions.md"),
@@ -28,6 +30,47 @@ MUTABLE_STATE = {
     Path(".chief-of-staff/control-plane.json"),
     Path(".chief-of-staff/throughput.json"),
 }
+
+PRODUCT_DISCOVERY_LANES = {
+    "project_initiation",
+    "requirements_analysis",
+    "market_research",
+    "architecture_feasibility",
+}
+PRODUCT_DISCOVERY_DELIVERABLES = {
+    "project_charter",
+    "market_competitor_research",
+    "user_research_and_personas",
+    "business_policy_feasibility",
+    "requirements_inventory_and_prioritization",
+    "architecture_feasibility",
+    "risk_gap_and_mvp_recommendation",
+}
+PRODUCT_DISCOVERY_COVERAGE = {
+    "problem_definition",
+    "goals_non_goals_acceptance_metrics",
+    "market_competitors",
+    "users_pain_points_personas",
+    "policy_constraints_business_feasibility",
+    "requirements_sources_and_tiering",
+    "rejected_false_duplicate_high_difficulty",
+    "advisory_architecture_feasibility",
+    "risks_evidence_gaps_mvp",
+    "traceable_evidence_index",
+}
+PROJECT_CLASSIFICATION_POLICIES = {
+    "project_classification_policy": "classify_after_goal_confirmation",
+    "deliverable_product_discovery_policy": "required_before_production",
+    "production_start_policy": (
+        "deny_until_product_discovery_passed_or_coordination_exempt"
+    ),
+    "product_discovery_state_file": ".chief-of-staff/product-discovery.json",
+}
+STATUS_HEADINGS = (
+    "最终目标", "当前阶段", "产品分类与发现门", "已验证事实", "推断",
+    "待确认项", "待批复汇报", "正在工作的岗位", "距最终交付的差距",
+    "风险", "下一步", "下一检查点",
+)
 
 
 def render(source: Path, project_name: str, preferences: Optional[dict] = None) -> bytes:
@@ -109,7 +152,14 @@ def require_keys(value: dict, keys: set[str], relative: Path, errors: list[str])
         errors.append(f"missing keys in {relative}: {', '.join(missing)}")
 
 
-def migrate_mutable_state(relative: Path, value: object) -> tuple[object, bool]:
+def migrate_mutable_state(
+    relative: Path,
+    value: object,
+    *,
+    legacy_upgrade: bool = False,
+    legacy_task_ids: set[str] | None = None,
+    legacy_phase_ids: set[str] | None = None,
+) -> tuple[object, bool]:
     """Add backward-compatible fields without changing existing state values."""
     if not isinstance(value, dict):
         return value, False
@@ -130,6 +180,29 @@ def migrate_mutable_state(relative: Path, value: object) -> tuple[object, bool]:
                 if key not in task:
                     task[key] = default
                     changed = True
+            task_id = task.get("task_id")
+            if (
+                "work_class" not in task
+                and legacy_upgrade
+                and isinstance(task_id, str)
+                and task_id in (legacy_task_ids or set())
+            ):
+                task["work_class"] = "legacy_existing"
+                changed = True
+
+    if relative.name == "project-plan.json" and isinstance(value.get("phases"), list):
+        for phase in value["phases"]:
+            if not isinstance(phase, dict):
+                continue
+            phase_id = phase.get("phase_id")
+            if (
+                "phase_class" not in phase
+                and legacy_upgrade
+                and isinstance(phase_id, str)
+                and phase_id in (legacy_phase_ids or set())
+            ):
+                phase["phase_class"] = "legacy_existing"
+                changed = True
 
     if relative.name == "approval-queue.json" and isinstance(value.get("requests"), list):
         for request in value["requests"]:
@@ -161,6 +234,87 @@ def encoded_json(value: object) -> bytes:
     return (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
+def legacy_allowlist_digest(phase_ids: set[str], task_ids: set[str]) -> str:
+    payload = {
+        "phase_ids": sorted(phase_ids),
+        "task_ids": sorted(task_ids),
+    }
+    return hashlib.sha256(encoded_json(payload)).hexdigest()
+
+
+def traceable_ref_error(target: Path, ref: object, *, artifact: bool = False) -> str | None:
+    if not isinstance(ref, str) or not ref:
+        return "must be a non-empty reference"
+    if ref.startswith("repo://"):
+        relative_text = ref.removeprefix("repo://")
+        relative_path = Path(relative_text)
+        if (
+            not relative_text
+            or relative_path.is_absolute()
+            or ".." in relative_path.parts
+        ):
+            return "contains an unsafe repository path"
+        resolved = (target / relative_path).resolve()
+        try:
+            resolved.relative_to(target.resolve())
+        except ValueError:
+            return "escapes the project root"
+        if not resolved.is_file():
+            return "does not resolve to a project file"
+        return None
+    if ref.startswith(("https://", "user://", "record://")):
+        return None
+    return (
+        "must use repo:// for a project file or a traceable https://, user://, or record:// reference"
+        if not artifact
+        else "must use repo://, https://, user://, or record://"
+    )
+
+
+def migrate_status_text(text: str) -> tuple[str, bool]:
+    heading = "## 产品分类与发现门"
+    if heading in text:
+        return text, False
+    marker = "## 已验证事实"
+    if marker not in text:
+        return text, False
+    section = (
+        "## 产品分类与发现门\n\n"
+        "- Classification: legacy unclassified.\n"
+        "- Product discovery gate: legacy pending.\n"
+        "- Production execution: no new phase until classification and the applicable gate.\n\n"
+    )
+    return text.replace(marker, section + marker, 1), True
+
+
+def read_json_object(path: Path) -> dict | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def legacy_product_discovery(
+    rendered_template: bytes,
+    *,
+    phase_ids: set[str],
+    task_ids: set[str],
+) -> bytes:
+    state = json.loads(rendered_template.decode("utf-8"))
+    state["classification_status"] = "legacy_unclassified"
+    state["gate_status"] = "legacy_pending"
+    state["legacy_allowlist"] = {
+        "phase_ids": sorted(phase_ids),
+        "task_ids": sorted(task_ids),
+    }
+    state["migration_note"] = (
+        "Existing work was preserved as legacy state; classify the project and pass "
+        "the required product gate before adding production execution."
+    )
+    return encoded_json(state)
+
+
 def validate_state(relative: Path, value: object, errors: list[str]) -> None:
     if not isinstance(value, dict):
         errors.append(f"top-level JSON value in {relative} must be an object")
@@ -179,6 +333,9 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 "auditor_authority", "direct_report_policy", "partial_pause_policy",
                 "operator_escalation_policy", "continuation_policy",
                 "ordinary_failure_policy", "continuation_escalation_policy",
+                "project_classification_policy",
+                "deliverable_product_discovery_policy", "production_start_policy",
+                "product_discovery_state_file", "legacy_allowlist_digest",
                 "task_title_pattern",
                 "require_goal_confirmation", "max_management_depth",
                 "durable_goal_enabled", "execution_mode", "max_parallel_phase_lanes",
@@ -199,6 +356,9 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             "routine_administration_owner", "auditor_authority", "direct_report_policy",
             "partial_pause_policy", "operator_escalation_policy", "continuation_policy",
             "ordinary_failure_policy", "continuation_escalation_policy",
+            "project_classification_policy",
+            "deliverable_product_discovery_policy", "production_start_policy",
+            "product_discovery_state_file",
             "visual_selection_gate", "visual_review_hub_title",
         ):
             if key in value and not isinstance(value[key], str):
@@ -220,11 +380,23 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
         ):
             if key in value and not isinstance(value[key], bool):
                 errors.append(f"{key} in {relative} must be a boolean")
+        if value.get("pin_primary_task") is not True:
+            errors.append(f"pin_primary_task in {relative} must be true")
+        allowlist_digest = value.get("legacy_allowlist_digest")
+        if allowlist_digest is not None and (
+            not isinstance(allowlist_digest, str)
+            or len(allowlist_digest) != 64
+            or any(character not in "0123456789abcdef" for character in allowlist_digest)
+        ):
+            errors.append(f"legacy_allowlist_digest in {relative} must be a SHA-256 hex string or null")
         max_depth = value.get("max_management_depth")
         if not isinstance(max_depth, int) or isinstance(max_depth, bool) or max_depth < 1:
             errors.append(f"max_management_depth in {relative} must be a positive integer")
         if value.get("execution_mode") != "effective_throughput":
             errors.append(f"execution_mode in {relative} must be 'effective_throughput'")
+        for key, expected_value in PROJECT_CLASSIFICATION_POLICIES.items():
+            if value.get(key) != expected_value:
+                errors.append(f"{key} in {relative} must be {expected_value!r}")
         report_review_mode = value.get("report_review_mode")
         if report_review_mode not in {"all_reports", "exception_only"}:
             errors.append(
@@ -398,13 +570,13 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 require_keys(
                     phase,
                     {
-                        "phase_id", "title", "objective", "status",
+                        "phase_id", "title", "objective", "status", "phase_class",
                         "acceptance_criteria", "task_ids", "result_summary",
                     },
                     Path(label),
                     errors,
                 )
-                for key in ("phase_id", "title", "objective"):
+                for key in ("phase_id", "title", "objective", "phase_class"):
                     if key in phase and not isinstance(phase[key], str):
                         errors.append(f"{key} in {label} must be a string")
                 phase_id = phase.get("phase_id")
@@ -414,6 +586,11 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                     seen_phase_ids.add(phase_id)
                 if phase.get("status") not in phase_statuses:
                     errors.append(f"status in {label} is invalid")
+                if phase.get("phase_class") not in {
+                    "goal_discovery", "product_discovery", "production",
+                    "coordination", "legacy_existing",
+                }:
+                    errors.append(f"phase_class in {label} is invalid")
                 for key in ("acceptance_criteria", "task_ids"):
                     if key in phase and (
                         not isinstance(phase[key], list)
@@ -467,6 +644,390 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                     f"completed project in {relative} requires verified acceptance evidence"
                 )
 
+    elif relative.name == "product-discovery.json":
+        require_keys(
+            value,
+            {
+                "schema_version", "classification_status", "project_classification",
+                "classification_reason", "classified_at",
+                "classification_evidence_refs", "product_manager_required",
+                "exemption_reason", "gate_status", "product_manager", "lanes",
+                "required_deliverables", "synthesis_coverage", "evidence_index", "gate_decision",
+                "guardrails", "legacy_allowlist", "migration_note",
+            },
+            relative,
+            errors,
+        )
+        classification_status = value.get("classification_status")
+        project_classification = value.get("project_classification")
+        gate_status = value.get("gate_status")
+        if classification_status not in {"pending", "classified", "legacy_unclassified"}:
+            errors.append(f"classification_status in {relative} is invalid")
+        if project_classification not in {
+            "unclassified", "deliverable_project", "coordination_only"
+        }:
+            errors.append(f"project_classification in {relative} is invalid")
+        if gate_status not in {
+            "awaiting_classification", "legacy_pending", "awaiting_product_manager",
+            "in_progress", "blocked", "passed", "exempt",
+        }:
+            errors.append(f"gate_status in {relative} is invalid")
+        if not isinstance(value.get("classification_reason"), str):
+            errors.append(f"classification_reason in {relative} must be a string")
+        for key in ("classified_at", "exemption_reason", "migration_note"):
+            if value.get(key) is not None and not isinstance(value.get(key), str):
+                errors.append(f"{key} in {relative} must be a string or null")
+        classification_refs = value.get("classification_evidence_refs")
+        if not isinstance(classification_refs, list) or not all(
+            isinstance(item, str) for item in classification_refs
+        ):
+            errors.append(
+                f"classification_evidence_refs in {relative} must be an array of strings"
+            )
+        product_manager_required = value.get("product_manager_required")
+        if product_manager_required is not None and not isinstance(
+            product_manager_required, bool
+        ):
+            errors.append(f"product_manager_required in {relative} must be boolean or null")
+
+        product_manager = value.get("product_manager")
+        if not isinstance(product_manager, dict):
+            errors.append(f"product_manager in {relative} must be an object")
+            product_manager = {}
+        require_keys(
+            product_manager,
+            {
+                "owner_id", "owner_kind", "management_depth", "runtime_mode",
+                "runtime_limitation",
+            },
+            Path(f"{relative} product_manager"),
+            errors,
+        )
+        for key in ("owner_id", "runtime_limitation"):
+            if product_manager.get(key) is not None and not isinstance(
+                product_manager.get(key), str
+            ):
+                errors.append(f"product_manager.{key} in {relative} must be string or null")
+        if product_manager.get("owner_kind") not in {None, "durable_task", "temporary_subagent"}:
+            errors.append(f"product_manager.owner_kind in {relative} is invalid")
+        if product_manager.get("management_depth") != 2:
+            errors.append(f"product_manager.management_depth in {relative} must be 2")
+        runtime_mode = product_manager.get("runtime_mode")
+        if runtime_mode not in {
+            "unassigned", "four_temporary_helpers", "pm_single_task_fallback",
+        }:
+            errors.append(f"product_manager.runtime_mode in {relative} is invalid")
+
+        lanes = value.get("lanes")
+        if not isinstance(lanes, dict) or set(lanes) != PRODUCT_DISCOVERY_LANES:
+            errors.append(f"lanes in {relative} must contain the four required lanes")
+            lanes = {}
+        lane_statuses = {"pending", "active", "blocked", "verified", "not_applicable"}
+        lane_modes = {"unassigned", "temporary_helper", "product_manager_fallback", "not_applicable"}
+        for lane_id in PRODUCT_DISCOVERY_LANES:
+            lane = lanes.get(lane_id)
+            label = Path(f"{relative} lanes.{lane_id}")
+            if not isinstance(lane, dict):
+                errors.append(f"{label} must be an object")
+                continue
+            require_keys(
+                lane,
+                {
+                    "status", "execution_mode", "owner_id", "management_depth",
+                    "delegation_allowed", "artifact_refs", "evidence_refs",
+                },
+                label,
+                errors,
+            )
+            if lane.get("status") not in lane_statuses:
+                errors.append(f"status in {label} is invalid")
+            if lane.get("execution_mode") not in lane_modes:
+                errors.append(f"execution_mode in {label} is invalid")
+            if lane.get("owner_id") is not None and not isinstance(lane.get("owner_id"), str):
+                errors.append(f"owner_id in {label} must be a string or null")
+            if lane.get("management_depth") not in {2, 3}:
+                errors.append(f"management_depth in {label} must be 2 or 3")
+            if lane.get("delegation_allowed") is not False:
+                errors.append(f"delegation_allowed in {label} must be false")
+            for key in ("artifact_refs", "evidence_refs"):
+                refs = lane.get(key)
+                if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):
+                    errors.append(f"{key} in {label} must be an array of strings")
+
+        deliverables = value.get("required_deliverables")
+        if not isinstance(deliverables, dict) or set(deliverables) != PRODUCT_DISCOVERY_DELIVERABLES:
+            errors.append(
+                f"required_deliverables in {relative} must contain every required deliverable"
+            )
+            deliverables = {}
+        for deliverable_id in PRODUCT_DISCOVERY_DELIVERABLES:
+            deliverable = deliverables.get(deliverable_id)
+            label = Path(f"{relative} required_deliverables.{deliverable_id}")
+            if not isinstance(deliverable, dict):
+                errors.append(f"{label} must be an object")
+                continue
+            require_keys(
+                deliverable, {"status", "artifact_refs", "evidence_refs"}, label, errors
+            )
+            if deliverable.get("status") not in lane_statuses:
+                errors.append(f"status in {label} is invalid")
+            for key in ("artifact_refs", "evidence_refs"):
+                refs = deliverable.get(key)
+                if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):
+                    errors.append(f"{key} in {label} must be an array of strings")
+
+        synthesis_coverage = value.get("synthesis_coverage")
+        if (
+            not isinstance(synthesis_coverage, dict)
+            or set(synthesis_coverage) != PRODUCT_DISCOVERY_COVERAGE
+        ):
+            errors.append(
+                f"synthesis_coverage in {relative} must contain every required topic"
+            )
+            synthesis_coverage = {}
+        elif not all(isinstance(item, bool) for item in synthesis_coverage.values()):
+            errors.append(f"synthesis_coverage in {relative} must contain booleans")
+
+        evidence_index = value.get("evidence_index")
+        if not isinstance(evidence_index, list):
+            errors.append(f"evidence_index in {relative} must be an array")
+            evidence_index = []
+        seen_evidence_ids: set[str] = set()
+        verified_evidence_ids: set[str] = set()
+        for index, evidence in enumerate(evidence_index):
+            label = Path(f"{relative} evidence_index[{index}]")
+            if not isinstance(evidence, dict):
+                errors.append(f"{label} must be an object")
+                continue
+            require_keys(
+                evidence,
+                {
+                    "evidence_id", "kind", "summary", "source_ref",
+                    "verification_method", "verified_at",
+                },
+                label,
+                errors,
+            )
+            for key in ("evidence_id", "summary"):
+                if not isinstance(evidence.get(key), str) or not evidence.get(key):
+                    errors.append(f"{key} in {label} must be a non-empty string")
+            evidence_id = evidence.get("evidence_id")
+            if isinstance(evidence_id, str):
+                if evidence_id in seen_evidence_ids:
+                    errors.append(f"duplicate evidence_id in {relative}: {evidence_id}")
+                seen_evidence_ids.add(evidence_id)
+            if evidence.get("kind") not in {"verified_fact", "assumption", "open_question"}:
+                errors.append(f"kind in {label} is invalid")
+            source_ref = evidence.get("source_ref")
+            if source_ref is not None and not isinstance(source_ref, str):
+                errors.append(f"source_ref in {label} must be a string or null")
+            for key in ("verification_method", "verified_at"):
+                if evidence.get(key) is not None and not isinstance(evidence.get(key), str):
+                    errors.append(f"{key} in {label} must be a string or null")
+            if evidence.get("kind") == "verified_fact" and (
+                not source_ref
+                or not evidence.get("verification_method")
+                or not evidence.get("verified_at")
+            ):
+                errors.append(
+                    f"verified_fact in {label} requires source, verification method, and time"
+                )
+            elif evidence.get("kind") == "verified_fact" and isinstance(evidence_id, str):
+                verified_evidence_ids.add(evidence_id)
+
+        gate_decision = value.get("gate_decision")
+        if not isinstance(gate_decision, dict):
+            errors.append(f"gate_decision in {relative} must be an object")
+            gate_decision = {}
+        require_keys(
+            gate_decision,
+            {
+                "decision", "conditions", "material_direction_status", "review_route",
+                "review_status", "decision_ref",
+            },
+            Path(f"{relative} gate_decision"),
+            errors,
+        )
+        if gate_decision.get("decision") not in {
+            "undecided", "proceed", "conditional_proceed", "do_not_proceed",
+            "not_applicable",
+        }:
+            errors.append(f"gate_decision.decision in {relative} is invalid")
+        conditions = gate_decision.get("conditions")
+        if not isinstance(conditions, list) or not all(isinstance(item, str) for item in conditions):
+            errors.append(f"gate_decision.conditions in {relative} must be an array of strings")
+        if gate_decision.get("material_direction_status") not in {
+            "no_conflict", "resolved_by_evidence", "operator_required",
+            "operator_confirmed", "not_applicable",
+        }:
+            errors.append(f"gate_decision.material_direction_status in {relative} is invalid")
+        if gate_decision.get("review_route") not in {"chief", "operator", "not_applicable"}:
+            errors.append(f"gate_decision.review_route in {relative} is invalid")
+        if gate_decision.get("review_status") not in {
+            "pending", "approved", "changes_requested", "not_applicable"
+        }:
+            errors.append(f"gate_decision.review_status in {relative} is invalid")
+        if gate_decision.get("decision_ref") is not None and not isinstance(
+            gate_decision.get("decision_ref"), str
+        ):
+            errors.append(f"gate_decision.decision_ref in {relative} must be string or null")
+
+        expected_guardrails = {
+            "architecture_output": "advisory_non_binding",
+            "visual_direction": "creative_director_only",
+            "protected_actions": "separate_explicit_approval",
+        }
+        if value.get("guardrails") != expected_guardrails:
+            errors.append(f"guardrails in {relative} must preserve architecture, visual, and approval boundaries")
+        legacy_allowlist = value.get("legacy_allowlist")
+        if not isinstance(legacy_allowlist, dict):
+            errors.append(f"legacy_allowlist in {relative} must be an object")
+            legacy_allowlist = {}
+        require_keys(
+            legacy_allowlist, {"phase_ids", "task_ids"},
+            Path(f"{relative} legacy_allowlist"), errors,
+        )
+        for key in ("phase_ids", "task_ids"):
+            ids = legacy_allowlist.get(key)
+            if not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
+                errors.append(f"legacy_allowlist.{key} in {relative} must be an array of strings")
+            elif len(ids) != len(set(ids)):
+                errors.append(f"legacy_allowlist.{key} in {relative} must not contain duplicates")
+
+        if classification_status == "pending":
+            if project_classification != "unclassified" or gate_status != "awaiting_classification":
+                errors.append(f"pending classification in {relative} must await classification")
+            if value.get("product_manager_required") is not None:
+                errors.append(f"pending classification in {relative} requires null product_manager_required")
+        if classification_status == "legacy_unclassified":
+            if project_classification != "unclassified" or gate_status != "legacy_pending":
+                errors.append(f"legacy_unclassified in {relative} requires legacy_pending gate")
+            if value.get("product_manager_required") is not None:
+                errors.append(f"legacy_unclassified in {relative} requires null product_manager_required")
+        if classification_status in {"pending", "legacy_unclassified"}:
+            if product_manager.get("owner_id") is not None or runtime_mode != "unassigned":
+                errors.append(f"unclassified state in {relative} cannot assign a product manager")
+        if classification_status == "classified":
+            if project_classification not in {"deliverable_project", "coordination_only"}:
+                errors.append(f"classified state in {relative} requires a concrete project classification")
+            if (
+                not value.get("classification_reason")
+                or not value.get("classified_at")
+                or not classification_refs
+            ):
+                errors.append(f"classified state in {relative} requires reason, time, and evidence")
+        if project_classification == "coordination_only":
+            if classification_status != "classified" or value.get("product_manager_required") is not False:
+                errors.append(f"coordination_only in {relative} must be classified with no product manager")
+            if not value.get("exemption_reason") or gate_status != "exempt":
+                errors.append(f"coordination_only in {relative} requires exemption_reason and exempt gate")
+            if product_manager.get("owner_id") is not None or runtime_mode != "unassigned":
+                errors.append(f"coordination_only in {relative} cannot assign a product manager")
+            if any(lane.get("status") != "not_applicable" for lane in lanes.values() if isinstance(lane, dict)):
+                errors.append(f"coordination_only in {relative} requires not_applicable lanes")
+            if any(
+                lane.get("execution_mode") != "not_applicable"
+                or lane.get("owner_id") is not None
+                for lane in lanes.values() if isinstance(lane, dict)
+            ):
+                errors.append(f"coordination_only in {relative} cannot retain discovery lane owners")
+            if any(item.get("status") != "not_applicable" for item in deliverables.values() if isinstance(item, dict)):
+                errors.append(f"coordination_only in {relative} requires not_applicable deliverables")
+            if gate_decision.get("decision") != "not_applicable" or gate_decision.get("review_status") != "not_applicable":
+                errors.append(f"coordination_only in {relative} requires not_applicable gate decision")
+            if any(synthesis_coverage.values()):
+                errors.append(f"coordination_only in {relative} cannot claim product synthesis coverage")
+        if project_classification == "deliverable_project":
+            if classification_status != "classified" or value.get("product_manager_required") is not True:
+                errors.append(f"deliverable_project in {relative} must be classified and require a product manager")
+            if gate_status not in {"awaiting_product_manager", "in_progress", "blocked", "passed"}:
+                errors.append(f"deliverable_project gate_status in {relative} is invalid")
+            if value.get("exemption_reason") is not None:
+                errors.append(f"deliverable_project in {relative} cannot have exemption_reason")
+            if any(
+                lane.get("status") == "not_applicable"
+                for lane in lanes.values() if isinstance(lane, dict)
+            ) or any(
+                item.get("status") == "not_applicable"
+                for item in deliverables.values() if isinstance(item, dict)
+            ):
+                errors.append(f"deliverable_project in {relative} must restore every discovery requirement")
+            if gate_status in {"in_progress", "blocked", "passed"}:
+                if not product_manager.get("owner_id") or product_manager.get("owner_kind") not in {
+                    "durable_task", "temporary_subagent"
+                }:
+                    errors.append(f"active product discovery in {relative} requires a product manager owner")
+                if runtime_mode == "unassigned":
+                    errors.append(f"active product discovery in {relative} requires an assigned runtime mode")
+            if runtime_mode == "four_temporary_helpers":
+                if not product_manager.get("owner_id"):
+                    errors.append(f"four_temporary_helpers in {relative} requires product manager owner")
+                helper_ids: list[str] = []
+                for lane in lanes.values():
+                    if not isinstance(lane, dict):
+                        continue
+                    if lane.get("execution_mode") != "temporary_helper" or lane.get("management_depth") != 3:
+                        errors.append(f"four_temporary_helpers in {relative} requires depth-3 temporary_helper lanes")
+                    if not lane.get("owner_id"):
+                        errors.append(f"four_temporary_helpers in {relative} requires lane owner IDs")
+                    elif lane.get("owner_id") == product_manager.get("owner_id"):
+                        errors.append(f"four_temporary_helpers in {relative} cannot use PM as helper owner")
+                    else:
+                        helper_ids.append(lane["owner_id"])
+                if len(helper_ids) != len(set(helper_ids)):
+                    errors.append(f"four_temporary_helpers in {relative} requires distinct helper owners")
+            if runtime_mode == "pm_single_task_fallback":
+                if not product_manager.get("runtime_limitation"):
+                    errors.append(f"pm_single_task_fallback in {relative} requires runtime_limitation")
+                for lane in lanes.values():
+                    if not isinstance(lane, dict):
+                        continue
+                    if (
+                        lane.get("execution_mode") != "product_manager_fallback"
+                        or lane.get("management_depth") != 2
+                        or lane.get("owner_id") != product_manager.get("owner_id")
+                    ):
+                        errors.append(f"pm_single_task_fallback in {relative} requires every lane owned by the PM at depth 2")
+            if gate_status == "passed":
+                if runtime_mode not in {"four_temporary_helpers", "pm_single_task_fallback"}:
+                    errors.append(f"passed gate in {relative} requires a completed runtime mode")
+                if any(
+                    lane.get("status") != "verified"
+                    or not lane.get("artifact_refs")
+                    or not lane.get("evidence_refs")
+                    for lane in lanes.values() if isinstance(lane, dict)
+                ):
+                    errors.append(f"passed gate in {relative} requires verified lane artifacts and evidence")
+                if any(
+                    item.get("status") != "verified"
+                    or not item.get("artifact_refs")
+                    or not item.get("evidence_refs")
+                    for item in deliverables.values() if isinstance(item, dict)
+                ):
+                    errors.append(f"passed gate in {relative} requires every verified deliverable")
+                if not evidence_index:
+                    errors.append(f"passed gate in {relative} requires evidence_index")
+                if any(
+                    not verified_evidence_ids.intersection(lane.get("evidence_refs", []))
+                    for lane in lanes.values() if isinstance(lane, dict)
+                ):
+                    errors.append(f"passed gate in {relative} requires verified-fact evidence for every lane")
+                if any(
+                    not verified_evidence_ids.intersection(item.get("evidence_refs", []))
+                    for item in deliverables.values() if isinstance(item, dict)
+                ):
+                    errors.append(f"passed gate in {relative} requires verified-fact evidence for every deliverable")
+                if not synthesis_coverage or not all(synthesis_coverage.values()):
+                    errors.append(f"passed gate in {relative} requires complete synthesis coverage")
+                if gate_decision.get("decision") not in {"proceed", "conditional_proceed"}:
+                    errors.append(f"passed gate in {relative} requires proceed decision")
+                if gate_decision.get("decision") == "conditional_proceed" and not conditions:
+                    errors.append(f"conditional_proceed in {relative} requires conditions")
+                if gate_decision.get("material_direction_status") == "operator_required":
+                    errors.append(f"passed gate in {relative} cannot retain operator_required direction")
+                if gate_decision.get("review_status") != "approved" or not gate_decision.get("decision_ref"):
+                    errors.append(f"passed gate in {relative} requires approved review with decision_ref")
+
     elif relative.name == "task-registry.json":
         require_keys(value, {"schema_version", "tasks"}, relative, errors)
         tasks = value.get("tasks")
@@ -475,6 +1036,7 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             return
         required_task_keys = {
             "task_id", "host_id", "title", "role", "objective", "status",
+            "work_class",
             "write_surface", "depends_on", "last_cursor", "result_summary",
             "parent_task_id", "phase_id", "management_depth",
             "project_id",
@@ -498,6 +1060,11 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 task_by_id[task_id] = task
             if task.get("status") not in statuses:
                 errors.append(f"status in {label} is invalid")
+            if task.get("work_class") not in {
+                "goal_discovery", "product_discovery", "production_execution",
+                "coordination_only", "legacy_existing",
+            }:
+                errors.append(f"work_class in {label} is invalid")
             for key in ("write_surface", "depends_on", "coordination_with"):
                 if key in task and (
                     not isinstance(task[key], list)
@@ -635,8 +1202,19 @@ def validate(target: Path) -> list[str]:
         if not (target / relative).is_file():
             errors.append(f"missing {relative}")
 
+    status_path = target / ".chief-of-staff" / "status.md"
+    if status_path.is_file():
+        try:
+            status_text = status_path.read_text(encoding="utf-8")
+            for heading in STATUS_HEADINGS:
+                if f"## {heading}" not in status_text:
+                    errors.append(f"status.md is missing required heading: {heading}")
+        except (OSError, UnicodeDecodeError) as exc:
+            errors.append(f"invalid status.md: {exc}")
+
     for relative in (
         Path(".chief-of-staff/project.json"),
+        Path(".chief-of-staff/product-discovery.json"),
         Path(".chief-of-staff/project-plan.json"),
         Path(".chief-of-staff/task-registry.json"),
         Path(".chief-of-staff/approval-queue.json"),
@@ -651,15 +1229,22 @@ def validate(target: Path) -> list[str]:
             except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 errors.append(f"invalid JSON in {relative}: {exc}")
 
+    project_path = target / ".chief-of-staff" / "project.json"
+    discovery_path = target / ".chief-of-staff" / "product-discovery.json"
     plan_path = target / ".chief-of-staff" / "project-plan.json"
     registry_path = target / ".chief-of-staff" / "task-registry.json"
-    if plan_path.is_file() and registry_path.is_file():
+    if all(path.is_file() for path in (project_path, discovery_path, plan_path, registry_path)):
         try:
+            project = json.loads(project_path.read_text(encoding="utf-8"))
+            discovery = json.loads(discovery_path.read_text(encoding="utf-8"))
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
             registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            tasks = registry.get("tasks") if isinstance(registry, dict) else None
+            phases = plan.get("phases") if isinstance(plan, dict) else None
+            task_list = tasks if isinstance(tasks, list) else []
+            phase_list = phases if isinstance(phases, list) else []
             if isinstance(plan, dict) and plan.get("project_status") == "active":
                 current_phase_id = plan.get("current_phase_id")
-                tasks = registry.get("tasks") if isinstance(registry, dict) else None
                 active_statuses = {"queued", "running", "needs_attention"}
                 if not isinstance(tasks, list) or not any(
                     isinstance(task, dict)
@@ -671,6 +1256,163 @@ def validate(target: Path) -> list[str]:
                         "active project requires a queued, running, or needs_attention "
                         "task in the current phase"
                     )
+
+            if isinstance(project, dict):
+                for key, expected_value in PROJECT_CLASSIFICATION_POLICIES.items():
+                    if project.get(key) != expected_value:
+                        errors.append(f"project policy {key} does not match product-discovery governance")
+
+            if isinstance(discovery, dict) and isinstance(plan, dict):
+                classification_status = discovery.get("classification_status")
+                classification = discovery.get("project_classification")
+                gate_status = discovery.get("gate_status")
+                goal_status = plan.get("goal_status")
+                allowlist = discovery.get("legacy_allowlist")
+                allowed_legacy_tasks = set(
+                    allowlist.get("task_ids", []) if isinstance(allowlist, dict) else []
+                )
+                allowed_legacy_phases = set(
+                    allowlist.get("phase_ids", []) if isinstance(allowlist, dict) else []
+                )
+                expected_allowlist_digest = legacy_allowlist_digest(
+                    allowed_legacy_phases, allowed_legacy_tasks
+                )
+                stored_allowlist_digest = project.get("legacy_allowlist_digest")
+                if classification_status == "legacy_unclassified" or (
+                    allowed_legacy_tasks or allowed_legacy_phases
+                ):
+                    if stored_allowlist_digest != expected_allowlist_digest:
+                        errors.append(
+                            "legacy allowlist does not match the immutable project digest"
+                        )
+                elif stored_allowlist_digest is not None:
+                    errors.append(
+                        "non-legacy project cannot retain a legacy allowlist digest"
+                    )
+
+                evidence_index = discovery.get("evidence_index")
+                evidence_ids = {
+                    item.get("evidence_id")
+                    for item in evidence_index if isinstance(item, dict)
+                } if isinstance(evidence_index, list) else set()
+                for item in (evidence_index if isinstance(evidence_index, list) else []):
+                    if not isinstance(item, dict) or item.get("kind") != "verified_fact":
+                        continue
+                    source_error = traceable_ref_error(target, item.get("source_ref"))
+                    if source_error:
+                        errors.append(
+                            f"evidence {item.get('evidence_id')!r} source_ref {source_error}"
+                        )
+
+                evidence_holders: list[tuple[str, dict]] = []
+                for group_name in ("lanes", "required_deliverables"):
+                    group = discovery.get(group_name)
+                    if not isinstance(group, dict):
+                        continue
+                    evidence_holders.extend(
+                        (f"{group_name}.{item_id}", item)
+                        for item_id, item in group.items() if isinstance(item, dict)
+                    )
+                for label, item in evidence_holders:
+                    for evidence_ref in item.get("evidence_refs", []):
+                        if evidence_ref not in evidence_ids:
+                            errors.append(
+                                f"{label} references unknown evidence ID {evidence_ref!r}"
+                            )
+                    for artifact_ref in item.get("artifact_refs", []):
+                        artifact_error = traceable_ref_error(
+                            target, artifact_ref, artifact=True
+                        )
+                        if artifact_error:
+                            errors.append(
+                                f"{label} artifact {artifact_ref!r} {artifact_error}"
+                            )
+
+                for task in task_list:
+                    if not isinstance(task, dict):
+                        continue
+                    task_id = task.get("task_id")
+                    if task.get("work_class") == "legacy_existing" and task_id not in allowed_legacy_tasks:
+                        errors.append(
+                            f"task {task_id!r} claims legacy_existing but is not in the migration allowlist"
+                        )
+                for phase in phase_list:
+                    if not isinstance(phase, dict):
+                        continue
+                    phase_id = phase.get("phase_id")
+                    if phase.get("phase_class") == "legacy_existing" and phase_id not in allowed_legacy_phases:
+                        errors.append(
+                            f"phase {phase_id!r} claims legacy_existing but is not in the migration allowlist"
+                        )
+
+                nonlegacy_tasks = [
+                    task for task in task_list
+                    if isinstance(task, dict) and task.get("work_class") != "legacy_existing"
+                ]
+                nonlegacy_phases = [
+                    phase for phase in phase_list
+                    if isinstance(phase, dict) and phase.get("phase_class") != "legacy_existing"
+                ]
+                if goal_status == "unconfirmed":
+                    if classification_status == "classified":
+                        errors.append("project classification requires a confirmed goal")
+                    if any(task.get("work_class") != "goal_discovery" for task in nonlegacy_tasks):
+                        errors.append("unconfirmed goal permits only goal_discovery tasks")
+                    if any(phase.get("phase_class") != "goal_discovery" for phase in nonlegacy_phases):
+                        errors.append("unconfirmed goal permits only goal_discovery phases")
+                elif goal_status == "confirmed" and classification_status == "pending":
+                    errors.append("confirmed goal requires project classification")
+                elif goal_status == "confirmed" and classification_status == "legacy_unclassified":
+                    if nonlegacy_tasks or nonlegacy_phases:
+                        errors.append(
+                            "legacy project requires classification before new tasks or phases"
+                        )
+
+                if classification == "coordination_only":
+                    if any(
+                        task.get("work_class") in {"product_discovery", "production_execution"}
+                        for task in nonlegacy_tasks
+                    ) or any(
+                        phase.get("phase_class") in {"product_discovery", "production"}
+                        for phase in nonlegacy_phases
+                    ):
+                        errors.append(
+                            "coordination_only project cannot create product-discovery or production work; reclassify first"
+                        )
+
+                if classification == "deliverable_project" and gate_status != "passed":
+                    if any(
+                        task.get("work_class") == "production_execution"
+                        for task in nonlegacy_tasks
+                    ) or any(
+                        phase.get("phase_class") == "production"
+                        for phase in nonlegacy_phases
+                    ):
+                        errors.append(
+                            "production execution is denied until the product-discovery gate passes"
+                        )
+
+                product_manager = discovery.get("product_manager")
+                if isinstance(product_manager, dict) and product_manager.get("owner_kind") == "durable_task":
+                    owner_id = product_manager.get("owner_id")
+                    owner = next(
+                        (
+                            task for task in task_list
+                            if isinstance(task, dict) and task.get("task_id") == owner_id
+                        ),
+                        None,
+                    )
+                    if not isinstance(owner, dict):
+                        errors.append("durable product manager owner must exist in task-registry.json")
+                    else:
+                        if owner.get("management_depth") != 2:
+                            errors.append("durable product manager must have management_depth 2")
+                        if owner.get("work_class") != "product_discovery":
+                            errors.append("durable product manager must use work_class product_discovery")
+                        if gate_status == "passed" and owner.get("status") not in {
+                            "completed", "archived"
+                        }:
+                            errors.append("passed product-discovery gate requires completed product manager task")
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             pass
 
@@ -720,9 +1462,41 @@ def initialize(
     conflicts: list[Path] = []
     planned: list[tuple[Path, bytes]] = []
 
+    existing_project = read_json_object(target / ".chief-of-staff" / "project.json")
+    discovery_path = target / ".chief-of-staff" / "product-discovery.json"
+    legacy_upgrade = bool(
+        existing_project is not None
+        and (
+            not discovery_path.is_file()
+            or any(key not in existing_project for key in PROJECT_CLASSIFICATION_POLICIES)
+        )
+    )
+    existing_plan = read_json_object(target / ".chief-of-staff" / "project-plan.json")
+    existing_registry = read_json_object(target / ".chief-of-staff" / "task-registry.json")
+    legacy_phase_ids = {
+        phase["phase_id"]
+        for phase in (existing_plan or {}).get("phases", [])
+        if isinstance(phase, dict) and isinstance(phase.get("phase_id"), str)
+    }
+    legacy_task_ids = {
+        task["task_id"]
+        for task in (existing_registry or {}).get("tasks", [])
+        if isinstance(task, dict) and isinstance(task.get("task_id"), str)
+    }
+
     for source, relative in files:
         destination = target / relative
         expected = render(source, project_name, preferences)
+        if (
+            relative == Path(".chief-of-staff/product-discovery.json")
+            and legacy_upgrade
+            and not destination.exists()
+        ):
+            expected = legacy_product_discovery(
+                expected,
+                phase_ids=legacy_phase_ids,
+                task_ids=legacy_task_ids,
+            )
         cursor = target
         unsafe_parent = False
         for part in relative.parts[:-1]:
@@ -738,7 +1512,13 @@ def initialize(
                 if relative.suffix == ".json":
                     try:
                         value = json.loads(destination.read_text(encoding="utf-8"))
-                        value, changed = migrate_mutable_state(relative, value)
+                        value, changed = migrate_mutable_state(
+                            relative,
+                            value,
+                            legacy_upgrade=legacy_upgrade,
+                            legacy_task_ids=legacy_task_ids,
+                            legacy_phase_ids=legacy_phase_ids,
+                        )
                         state_errors: list[str] = []
                         validate_state(relative, value, state_errors)
                         if state_errors:
@@ -746,6 +1526,15 @@ def initialize(
                         if changed:
                             planned.append((destination, encoded_json(value)))
                     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                        conflicts.append(relative)
+                        continue
+                elif relative.name == "status.md":
+                    try:
+                        status_text = destination.read_text(encoding="utf-8")
+                        migrated_status, changed = migrate_status_text(status_text)
+                        if changed:
+                            planned.append((destination, migrated_status.encode("utf-8")))
+                    except (OSError, UnicodeDecodeError):
                         conflicts.append(relative)
                         continue
                 continue
@@ -770,7 +1559,9 @@ def initialize(
                         continue
                 except (OSError, UnicodeDecodeError, AttributeError, ValueError):
                     pass
-            if destination.read_bytes() == expected:
+            if destination.read_bytes() == expected and not (
+                relative == Path(".chief-of-staff/project.json") and legacy_upgrade
+            ):
                 continue
             if relative == Path(".chief-of-staff/project.json"):
                 try:
@@ -779,6 +1570,11 @@ def initialize(
                     # Upgrade an older managed project by adding only missing defaults.
                     upgraded_project = dict(existing_project)
                     project_changed = False
+                    if legacy_upgrade and not upgraded_project.get("legacy_allowlist_digest"):
+                        upgraded_project["legacy_allowlist_digest"] = legacy_allowlist_digest(
+                            legacy_phase_ids, legacy_task_ids
+                        )
+                        project_changed = True
                     if "report_review_mode" not in upgraded_project:
                         upgraded_project["report_review_mode"] = (
                             "all_reports"
@@ -794,9 +1590,16 @@ def initialize(
                         "direct_report_policy", "partial_pause_policy",
                         "operator_escalation_policy", "continuation_policy",
                         "ordinary_failure_policy", "continuation_escalation_policy",
+                        "project_classification_policy",
+                        "deliverable_product_discovery_policy", "production_start_policy",
+                        "product_discovery_state_file", "legacy_allowlist_digest",
                     ):
                         if key not in upgraded_project:
-                            upgraded_project[key] = expected_project[key]
+                            upgraded_project[key] = (
+                                legacy_allowlist_digest(legacy_phase_ids, legacy_task_ids)
+                                if key == "legacy_allowlist_digest" and legacy_upgrade
+                                else expected_project[key]
+                            )
                             project_changed = True
                     if project_changed:
                         state_errors: list[str] = []
@@ -849,8 +1652,14 @@ def initialize(
                 peer_coordination = """\n## Peer coordination and subagent meetings\n\n- Durable roles may message only peers listed in their `coordination_with` registry field, and only when both tasks have the same verified `project_id`. The Chief grants or revokes these contact edges.\n- A peer message has a bounded purpose, relevant evidence, the interface or dependency at issue, and the response needed. Routine peer sync does not require user approval, but the sender reports the resulting decision or unresolved conflict to the Chief.\n- Peer dialogue cannot transfer write ownership, expand scope, approve a report, or authorize a protected action. Conflicting assumptions or requested ownership changes go to the Chief before either task implements them.\n- When `subagent_meetings_enabled` is true, any durable role may summon up to `max_meeting_participants` temporary subagents for independent research, discussion, testing, or review. Participants are read-only by default, cannot create durable tasks, and do not add a management layer.\n- Every meeting records one question, participant roles, inputs, stopping condition, and synthesis owner. The parent waits for all requested results, reconciles them by evidence rather than vote, and sends one concise meeting outcome to affected peers and the Chief.\n"""
                 project_lifecycle = """\n## Project placement and task lifecycle\n\n- Every durable child task must be created in the same saved Codex project as its Chief. Record the returned `project_id` in `task-registry.json` and verify it matches before delegation continues.\n- If the Chief has no saved project context, use temporary subagents by default. Ask the user to choose or save a project before creating a durable child whose separate history is truly required. Never create a projectless durable child silently.\n- Active, queued, failed, or needs-attention child tasks remain visible for follow-up. Do not pin child tasks unless the user explicitly requests it.\n- Archive a durable child only after its final report is explicitly approved, its evidence and result are recorded, and no retry or dependent follow-up remains. Archiving is reversible and must not delete its registry entry, task ID, cursor, or summary.\n"""
                 goal_closure = """\n## Goal closure and active progression\n\n- Before implementation, the Chief proposes and asks the user to confirm the final goal, deliverables, acceptance criteria, non-goals, and constraints. A new project permits only bounded read-only discovery before confirmation. In a migrated project, already-running non-high-impact tasks may finish, but no new task or phase starts before confirmation.\n- A phase completion is not project completion. The project is complete only when the goal is confirmed and every final acceptance criterion has non-empty verification evidence in `project-plan.json`.\n- Until completion, keep a phase task queued, running, or needing attention unless the project is explicitly waiting for the user or blocked with evidence and a release condition. If all phase tasks stop while final acceptance is unmet, immediately dispatch the next safe in-scope phase.\n- Follow all active tasks with bounded waits. After any completion, failure, or attention event, snapshot every active task before deciding what comes next.\n- A Chief report for an unfinished project always includes the final goal, current phase, verified progress, active roles, gap to delivery, and next checkpoint, even when no approval is pending.\n- Management depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role. Phase leads may create depth-3 tasks only when explicitly authorized in their contract. Temporary subagents cannot create durable roles. Depth 4 or deeper requires an approved `depth_expansion` request.\n- The Chief is the sole writer of `project-plan.json`, `task-registry.json`, `approval-queue.json`, and consolidated status. Low-impact in-scope phases advance automatically; protected actions retain their separate approval requirements.\n"""
+                product_discovery_gate = """\n## Product classification and discovery gate\n\n- After the initial mission and goal boundary are confirmed, classify the project in `.chief-of-staff/product-discovery.json` before creating another phase or role. `deliverable_project` creates or materially changes a product, service, code, design, content asset, or other acceptance-tested deliverable. `coordination_only` is limited to synchronization, pushing an already-decided change, meeting summaries, filing/process follow-up, or read-only audit/aggregation and requires a concrete exemption reason.\n- A scope expansion from coordination into product creation immediately invalidates the exemption. Reclassify as `deliverable_project`, appoint one Product Manager phase lead at management depth 2, and complete the gate before production execution.\n- The Product Manager is not a Chief and does not create a second control plane. It owns four bounded evidence lanes: project initiation, requirements analysis, market research, and advisory architecture feasibility. Each temporary helper is depth 3, read-only by default, cannot delegate again, and cannot create a durable role. If the runtime lacks subagents, the Product Manager completes all four lanes in one task, records the runtime limitation, and preserves separate artifacts and evidence for every lane.\n- Before the gate passes, permit only goal clarification, product-discovery research, and reversible planning. Do not create or start engineering, design, content production, or another production-execution role or phase. Run `python3 scripts/init_project.py --target <project-root> --check` immediately before any production task is created or started; a nonzero result is a hard stop.\n- Gate evidence never invents interviews, surveys, market data, or policy findings. Human outreach, survey delivery, paid data, restricted access, and every protected action retain their separate approval gates. Architecture discovery is advisory and cannot bind the later Technical Lead. Experience goals may be recorded, but clickable NON-FINAL visual options still go only to the Creative Director.\n- Under `exception_only`, the project Chief reviews routine Product Manager and helper evidence. Escalate only a material unresolved product direction, safety/permission/ownership conflict, protected action, or final project acceptance. Continuation policy advances safe discovery work but never treats a pending gate as production authorization.\n"""
                 report_gate = """\n## Report approval gate\n\nWhen `.chief-of-staff/project.json` sets `report_approval_required` to `true`, every milestone report and final handoff includes a stable `<task_id>:<report_sequence>` ID and requests `批准` or `退回修改`. The child opens a blocking review request so Codex marks it as needing attention; if the host cannot do that, it ends with `REVIEW_REQUIRED: <request_id>`. The Chief snapshots all active children after any wake-up, records every unseen request in `approval-queue.json`, and batches pending reports for the user in the Chief task. Only the user's explicit decision relayed by the Chief clears the gate.\n"""
-                previous_peer_coordination = current_text.replace(peer_coordination, "")
+                previous_product_discovery = current_text.replace(product_discovery_gate, "")
+                previous_product_discovery = previous_product_discovery.replace(
+                    "- `.chief-of-staff/product-discovery.json`: project classification, Product Manager ownership, four evidence lanes, required discovery deliverables, evidence index, legacy allowlist, and gate decision.\n",
+                    "",
+                )
+                previous_peer_coordination = previous_product_discovery.replace(peer_coordination, "")
                 previous_project_scoping = previous_peer_coordination.replace(project_lifecycle, "")
                 previous_current = previous_project_scoping.replace(goal_closure, "")
                 previous_current = previous_current.replace(
@@ -869,12 +1678,19 @@ def initialize(
                     "- A task is the Chief of Staff only when its title matches the `primary_task_title` in `.chief-of-staff/project.json` or its initiating prompt explicitly assigns that role.",
                     "- A task is the Chief of Staff only when its title or initiating prompt explicitly assigns that role.",
                 )
-                if destination.read_bytes() in {
+                compatibility_variants = {
                     previous_peer_coordination.encode("utf-8"),
                     previous_project_scoping.encode("utf-8"),
                     previous_current.encode("utf-8"), previous_text.encode("utf-8"),
                     legacy_text.encode("utf-8"),
-                }:
+                }
+                old_audio = b"- Generate separate written and spoken audio only when `audio_playback.enabled` is true. Use only its configured storage root; unavailable audio falls back to text without writing elsewhere."
+                new_audio = b"- With `provider: host_builtin`, keep written/spoken text available to the host voice or read-aloud control and generate no files. Only opt-in `auto` or `macos_say` renders separate written/spoken attachments in the configured storage root; unavailable audio falls back to text without writing elsewhere."
+                compatibility_variants.update(
+                    item.replace(new_audio, old_audio)
+                    for item in tuple(compatibility_variants)
+                )
+                if destination.read_bytes() in compatibility_variants:
                     planned.append((destination, expected))
                     continue
             conflicts.append(relative)

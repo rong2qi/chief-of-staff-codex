@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "classification_status": "pending",
+  "project_classification": "unclassified",
+  "classification_reason": "",
+  "classified_at": null,
+  "classification_evidence_refs": [],
+  "product_manager_required": null,
+  "exemption_reason": null,
+  "gate_status": "awaiting_classification",
+  "product_manager": {
+    "owner_id": null,
+    "owner_kind": null,
+    "management_depth": 2,
+    "runtime_mode": "unassigned",
+    "runtime_limitation": null
+  },
+  "lanes": {
+    "project_initiation": {
+      "status": "pending",
+      "execution_mode": "unassigned",
+      "owner_id": null,
+      "management_depth": 3,
+      "delegation_allowed": false,
+      "artifact_refs": [],
+      "evidence_refs": []
+    },
+    "requirements_analysis": {
+      "status": "pending",
+      "execution_mode": "unassigned",
+      "owner_id": null,
+      "management_depth": 3,
+      "delegation_allowed": false,
+      "artifact_refs": [],
+      "evidence_refs": []
+    },
+    "market_research": {
+      "status": "pending",
+      "execution_mode": "unassigned",
+      "owner_id": null,
+      "management_depth": 3,
+      "delegation_allowed": false,
+      "artifact_refs": [],
+      "evidence_refs": []
+    },
+    "architecture_feasibility": {
+      "status": "pending",
+      "execution_mode": "unassigned",
+      "owner_id": null,
+      "management_depth": 3,
+      "delegation_allowed": false,
+      "artifact_refs": [],
+      "evidence_refs": []
+    }
+  },
+  "required_deliverables": {
+    "project_charter": {
+      "status": "pending",
+      "artifact_refs": [],
+      "evidence_refs": []
+    },
+    "market_competitor_research": {
+      "status": "pending",
+      "artifact_refs": [],
+      "evidence_refs": []
+    },
+    "user_research_and_personas": {
+      "status": "pending",
+      "artifact_refs": [],
+      "evidence_refs": []
+    },
+    "business_policy_feasibility": {
+      "status": "pending",
+      "artifact_refs": [],
+      "evidence_refs": []
+    },
+    "requirements_inventory_and_prioritization": {
+      "status": "pending",
+      "artifact_refs": [],
+      "evidence_refs": []
+    },
+    "architecture_feasibility": {
+      "status": "pending",
+      "artifact_refs": [],
+      "evidence_refs": []
+    },
+    "risk_gap_and_mvp_recommendation": {
+      "status": "pending",
+      "artifact_refs": [],
+      "evidence_refs": []
+    }
+  },
+  "synthesis_coverage": {
+    "problem_definition": false,
+    "goals_non_goals_acceptance_metrics": false,
+    "market_competitors": false,
+    "users_pain_points_personas": false,
+    "policy_constraints_business_feasibility": false,
+    "requirements_sources_and_tiering": false,
+    "rejected_false_duplicate_high_difficulty": false,
+    "advisory_architecture_feasibility": false,
+    "risks_evidence_gaps_mvp": false,
+    "traceable_evidence_index": false
+  },
+  "evidence_index": [],
+  "gate_decision": {
+    "decision": "undecided",
+    "conditions": [],
+    "material_direction_status": "no_conflict",
+    "review_route": "chief",
+    "review_status": "pending",
+    "decision_ref": null
+  },
+  "guardrails": {
+    "architecture_output": "advisory_non_binding",
+    "visual_direction": "creative_director_only",
+    "protected_actions": "separate_explicit_approval"
+  },
+  "legacy_allowlist": {
+    "phase_ids": [],
+    "task_ids": []
+  },
+  "migration_note": null
+}

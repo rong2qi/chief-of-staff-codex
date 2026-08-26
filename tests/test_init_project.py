@@ -18,6 +18,175 @@ def run(target, *args):
     )
 
 
+def read_state(target, name):
+    return json.loads((target / ".chief-of-staff" / name).read_text())
+
+
+def write_state(target, name, value):
+    (target / ".chief-of-staff" / name).write_text(json.dumps(value) + "\n")
+
+
+def confirm_goal(target):
+    plan = read_state(target, "project-plan.json")
+    plan.update(
+        {
+            "goal_status": "confirmed",
+            "project_status": "blocked",
+            "final_goal": "Deliver a validated example",
+            "deliverables": ["validated example"],
+            "acceptance_criteria": [
+                {"criterion_id": "acceptance-1", "description": "Validated", "status": "pending", "evidence": []}
+            ],
+            "confirmed_at": "2026-08-26T00:00:00Z",
+        }
+    )
+    write_state(target, "project-plan.json", plan)
+
+
+def phase(phase_id, phase_class, task_ids=None, status="planned"):
+    return {
+        "phase_id": phase_id,
+        "title": phase_id,
+        "objective": "Complete the phase",
+        "status": status,
+        "phase_class": phase_class,
+        "acceptance_criteria": ["phase accepted"],
+        "task_ids": task_ids or [],
+        "result_summary": None,
+    }
+
+
+def task(task_id, work_class, phase_id, depth=2, status="queued"):
+    return {
+        "task_id": task_id,
+        "host_id": None,
+        "title": task_id,
+        "role": "Product Manager" if work_class == "product_discovery" else "Role",
+        "objective": "Complete assigned work",
+        "status": status,
+        "work_class": work_class,
+        "write_surface": [],
+        "depends_on": [],
+        "last_cursor": None,
+        "result_summary": None,
+        "parent_task_id": None,
+        "phase_id": phase_id,
+        "management_depth": depth,
+        "project_id": None,
+        "coordination_with": [],
+    }
+
+
+def classify_coordination(target, reason="Only synchronize an already-approved change"):
+    discovery = read_state(target, "product-discovery.json")
+    discovery.update(
+        {
+            "classification_status": "classified",
+            "project_classification": "coordination_only",
+            "classification_reason": reason,
+            "classified_at": "2026-08-26T00:01:00Z",
+            "classification_evidence_refs": ["goal-contract"],
+            "product_manager_required": False,
+            "exemption_reason": reason,
+            "gate_status": "exempt",
+        }
+    )
+    for lane in discovery["lanes"].values():
+        lane["status"] = "not_applicable"
+        lane["execution_mode"] = "not_applicable"
+    for deliverable in discovery["required_deliverables"].values():
+        deliverable["status"] = "not_applicable"
+    discovery["gate_decision"].update(
+        {
+            "decision": "not_applicable",
+            "material_direction_status": "not_applicable",
+            "review_route": "not_applicable",
+            "review_status": "not_applicable",
+        }
+    )
+    write_state(target, "product-discovery.json", discovery)
+
+
+def classify_deliverable(target, gate_status="awaiting_product_manager"):
+    discovery = read_state(target, "product-discovery.json")
+    discovery.update(
+        {
+            "classification_status": "classified",
+            "project_classification": "deliverable_project",
+            "classification_reason": "Creates a new accepted product artifact",
+            "classified_at": "2026-08-26T00:01:00Z",
+            "classification_evidence_refs": ["goal-contract"],
+            "product_manager_required": True,
+            "exemption_reason": None,
+            "gate_status": gate_status,
+        }
+    )
+    write_state(target, "product-discovery.json", discovery)
+
+
+def pass_product_gate(target, runtime_mode="pm_single_task_fallback"):
+    discovery = read_state(target, "product-discovery.json")
+    artifact_path = target / ".chief-of-staff" / "discovery-report.md"
+    artifact_path.write_text("# Product discovery report\n\nVerified repository evidence.\n")
+    discovery["gate_status"] = "passed"
+    discovery["product_manager"].update(
+        {
+            "owner_id": "pm-1",
+            "owner_kind": "durable_task",
+            "runtime_mode": runtime_mode,
+            "runtime_limitation": (
+                "Runtime has no subagent slots" if runtime_mode == "pm_single_task_fallback" else None
+            ),
+        }
+    )
+    for index, lane in enumerate(discovery["lanes"].values(), start=1):
+        lane.update(
+            {
+                "status": "verified",
+                "execution_mode": (
+                    "product_manager_fallback"
+                    if runtime_mode == "pm_single_task_fallback"
+                    else "temporary_helper"
+                ),
+                "owner_id": "pm-1" if runtime_mode == "pm_single_task_fallback" else f"helper-{index}",
+                "management_depth": 2 if runtime_mode == "pm_single_task_fallback" else 3,
+                "artifact_refs": ["repo://.chief-of-staff/discovery-report.md"],
+                "evidence_refs": ["evidence-1"],
+            }
+        )
+    for deliverable in discovery["required_deliverables"].values():
+        deliverable.update(
+            {
+                "status": "verified",
+                "artifact_refs": ["repo://.chief-of-staff/discovery-report.md"],
+                "evidence_refs": ["evidence-1"],
+            }
+        )
+    discovery["synthesis_coverage"] = {
+        key: True for key in discovery["synthesis_coverage"]
+    }
+    discovery["evidence_index"] = [
+        {
+            "evidence_id": "evidence-1",
+            "kind": "verified_fact",
+            "summary": "Repository evidence supports the recommendation",
+            "source_ref": "repo://AGENTS.md",
+            "verification_method": "direct_file_inspection",
+            "verified_at": "2026-08-26T00:02:00Z",
+        }
+    ]
+    discovery["gate_decision"].update(
+        {
+            "decision": "proceed",
+            "material_direction_status": "no_conflict",
+            "review_route": "chief",
+            "review_status": "approved",
+            "decision_ref": "decision://product-gate-1",
+        }
+    )
+    write_state(target, "product-discovery.json", discovery)
+
+
 class InitProjectTests(unittest.TestCase):
     def test_fresh_init_creates_throughput_and_goals_feature(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -66,7 +235,7 @@ class InitProjectTests(unittest.TestCase):
                 "continuation_escalation_policy",
                 "durable_goal_enabled", "execution_mode", "max_parallel_phase_lanes",
                 "no_evidence_checkpoint_limit", "visual_selection_gate",
-                "visual_review_hub_title",
+                "visual_review_hub_title", "legacy_allowlist_digest",
             ):
                 project.pop(key)
             project["max_management_depth"] = 5
@@ -209,6 +378,372 @@ class InitProjectTests(unittest.TestCase):
             result = run(target)
             self.assertEqual(result.returncode, 2)
             self.assertIn(".codex/config.toml", result.stderr)
+
+    def test_fresh_project_records_pending_product_classification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            project = read_state(target, "project.json")
+            discovery = read_state(target, "product-discovery.json")
+            self.assertEqual(project["project_classification_policy"], "classify_after_goal_confirmation")
+            self.assertEqual(project["production_start_policy"], "deny_until_product_discovery_passed_or_coordination_exempt")
+            self.assertIsNone(project["legacy_allowlist_digest"])
+            self.assertEqual(discovery["classification_status"], "pending")
+            self.assertEqual(discovery["project_classification"], "unclassified")
+            self.assertEqual(set(discovery["lanes"]), {
+                "project_initiation", "requirements_analysis", "market_research", "architecture_feasibility"
+            })
+            self.assertIn("Product classification and discovery gate", (target / "AGENTS.md").read_text())
+            self.assertEqual(run(target, "--check").returncode, 0)
+
+    def test_generated_contract_enforces_exact_id_pin_inheritance_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            agents = (target / "AGENTS.md").read_text()
+            self.assertIn("active Chief must remain pinned", agents)
+            self.assertIn("call `list_threads`", agents)
+            self.assertIn("exact task ID in `pinnedThreads`", agents)
+            self.assertIn("A `MIGRATION_READY` successor may take control only", agents)
+            self.assertIn("before takeover, authoritative-entry switching, or predecessor archival", agents)
+            self.assertIn("`pin_verification_failed`", agents)
+            self.assertIn("reason `unable_to_pin`", agents)
+            self.assertIn("create exactly one replacement in the same saved project and work state", agents)
+            self.assertIn("Never delete a predecessor, run duplicate Chiefs, change scope or pause state", agents)
+
+            skill = (ROOT / "SKILL.md").read_text()
+            readme = (ROOT / "README.md").read_text()
+            governance = (ROOT / "references/pin-inheritance-governance.md").read_text()
+            for text in (skill, readme, governance):
+                self.assertIn("MIGRATION_READY", text)
+                self.assertIn("list_threads", text)
+                self.assertIn("pinnedThreads", text)
+                self.assertIn("pin_verification_failed", text)
+                self.assertIn("unable_to_pin", text)
+
+    def test_active_chief_pin_cannot_be_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            project = read_state(target, "project.json")
+            project["pin_primary_task"] = False
+            write_state(target, "project.json", project)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("pin_primary_task", result.stderr)
+            self.assertIn("must be true", result.stderr)
+
+    def test_status_requires_all_governance_headings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            status_path = target / ".chief-of-staff/status.md"
+            status_path.write_text(status_path.read_text().replace("## 风险", "## Removed"))
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("status.md is missing required heading: 风险", result.stderr)
+
+    def test_confirmed_goal_requires_classification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            confirm_goal(target)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("confirmed goal requires project classification", result.stderr)
+
+    def test_classification_cannot_precede_goal_or_remain_abstract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            classify_coordination(target)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("classification requires a confirmed goal", result.stderr)
+
+            confirm_goal(target)
+            discovery = read_state(target, "product-discovery.json")
+            discovery["project_classification"] = "unclassified"
+            discovery["product_manager_required"] = None
+            discovery["gate_status"] = "awaiting_classification"
+            write_state(target, "product-discovery.json", discovery)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("requires a concrete project classification", result.stderr)
+
+    def test_coordination_exemption_requires_reason_and_blocks_production(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            confirm_goal(target)
+            classify_coordination(target)
+            self.assertEqual(run(target, "--check").returncode, 0)
+
+            discovery = read_state(target, "product-discovery.json")
+            discovery["exemption_reason"] = ""
+            write_state(target, "product-discovery.json", discovery)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("requires exemption_reason", result.stderr)
+
+            classify_coordination(target)
+            plan = read_state(target, "project-plan.json")
+            plan["phases"] = [phase("build", "production", ["builder"])]
+            registry = read_state(target, "task-registry.json")
+            registry["tasks"] = [task("builder", "production_execution", "build")]
+            write_state(target, "project-plan.json", plan)
+            write_state(target, "task-registry.json", registry)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("coordination_only project cannot create", result.stderr)
+
+    def test_reclassification_to_deliverable_reinstates_product_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            confirm_goal(target)
+            classify_coordination(target)
+            self.assertEqual(run(target, "--check").returncode, 0)
+            classify_deliverable(target)
+            plan = read_state(target, "project-plan.json")
+            plan["phases"] = [phase("build", "production", ["builder"])]
+            registry = read_state(target, "task-registry.json")
+            registry["tasks"] = [task("builder", "production_execution", "build")]
+            write_state(target, "project-plan.json", plan)
+            write_state(target, "task-registry.json", registry)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("production execution is denied", result.stderr)
+
+    def test_product_manager_fallback_gate_passes_and_allows_production(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            confirm_goal(target)
+            classify_deliverable(target, "in_progress")
+            discovery = read_state(target, "product-discovery.json")
+            discovery["product_manager"].update(
+                {
+                    "owner_id": "pm-1", "owner_kind": "durable_task",
+                    "runtime_mode": "pm_single_task_fallback", "runtime_limitation": None,
+                }
+            )
+            for lane in discovery["lanes"].values():
+                lane.update({"execution_mode": "product_manager_fallback", "owner_id": "pm-1", "management_depth": 2})
+            write_state(target, "product-discovery.json", discovery)
+            plan = read_state(target, "project-plan.json")
+            plan["phases"] = [phase("discovery", "product_discovery", ["pm-1"])]
+            registry = read_state(target, "task-registry.json")
+            registry["tasks"] = [task("pm-1", "product_discovery", "discovery", status="running")]
+            write_state(target, "project-plan.json", plan)
+            write_state(target, "task-registry.json", registry)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("requires runtime_limitation", result.stderr)
+
+            pass_product_gate(target)
+            registry["tasks"][0]["status"] = "completed"
+            registry["tasks"].append(task("builder", "production_execution", "build"))
+            plan["phases"].append(phase("build", "production", ["builder"]))
+            write_state(target, "project-plan.json", plan)
+            write_state(target, "task-registry.json", registry)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_four_helpers_and_fixed_product_boundaries_are_validated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            confirm_goal(target)
+            classify_deliverable(target)
+            pass_product_gate(target, runtime_mode="four_temporary_helpers")
+            plan = read_state(target, "project-plan.json")
+            plan["phases"] = [phase("discovery", "product_discovery", ["pm-1"], status="completed")]
+            registry = read_state(target, "task-registry.json")
+            registry["tasks"] = [task("pm-1", "product_discovery", "discovery", status="completed")]
+            write_state(target, "project-plan.json", plan)
+            write_state(target, "task-registry.json", registry)
+            self.assertEqual(run(target, "--check").returncode, 0)
+
+            discovery = read_state(target, "product-discovery.json")
+            discovery["lanes"]["market_research"]["owner_id"] = "helper-1"
+            discovery["guardrails"]["visual_direction"] = "product_manager"
+            write_state(target, "product-discovery.json", discovery)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("distinct helper owners", result.stderr)
+            self.assertIn("preserve architecture, visual, and approval boundaries", result.stderr)
+
+    def test_passed_gate_rejects_incomplete_evidence_and_unresolved_direction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            confirm_goal(target)
+            classify_deliverable(target)
+            pass_product_gate(target)
+            discovery = read_state(target, "product-discovery.json")
+            discovery["required_deliverables"]["project_charter"]["evidence_refs"] = []
+            discovery["gate_decision"]["decision"] = "conditional_proceed"
+            discovery["gate_decision"]["conditions"] = []
+            discovery["gate_decision"]["material_direction_status"] = "operator_required"
+            write_state(target, "product-discovery.json", discovery)
+            registry = read_state(target, "task-registry.json")
+            registry["tasks"] = [task("pm-1", "product_discovery", "discovery", status="completed")]
+            plan = read_state(target, "project-plan.json")
+            plan["phases"] = [phase("discovery", "product_discovery", ["pm-1"], status="completed")]
+            write_state(target, "task-registry.json", registry)
+            write_state(target, "project-plan.json", plan)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("requires every verified deliverable", result.stderr)
+            self.assertIn("requires conditions", result.stderr)
+            self.assertIn("cannot retain operator_required", result.stderr)
+
+    def test_passed_gate_rejects_dangling_or_untraceable_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            confirm_goal(target)
+            classify_deliverable(target)
+            pass_product_gate(target)
+            discovery = read_state(target, "product-discovery.json")
+            discovery["lanes"]["market_research"]["evidence_refs"] = ["invented-evidence"]
+            discovery["required_deliverables"]["market_competitor_research"]["artifact_refs"] = ["missing-report"]
+            discovery["evidence_index"][0]["source_ref"] = "repo://does-not-exist.md"
+            write_state(target, "product-discovery.json", discovery)
+            registry = read_state(target, "task-registry.json")
+            registry["tasks"] = [task("pm-1", "product_discovery", "discovery", status="completed")]
+            plan = read_state(target, "project-plan.json")
+            plan["phases"] = [phase("discovery", "product_discovery", ["pm-1"], status="completed")]
+            write_state(target, "task-registry.json", registry)
+            write_state(target, "project-plan.json", plan)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("unknown evidence ID", result.stderr)
+            self.assertIn("must use repo://", result.stderr)
+            self.assertIn("does not resolve to a project file", result.stderr)
+
+            pass_product_gate(target)
+            discovery = read_state(target, "product-discovery.json")
+            discovery["evidence_index"].append(
+                {
+                    "evidence_id": "assumption-1",
+                    "kind": "assumption",
+                    "summary": "Demand may exist but has not been verified",
+                    "source_ref": None,
+                    "verification_method": None,
+                    "verified_at": None,
+                }
+            )
+            discovery["lanes"]["market_research"]["evidence_refs"] = ["assumption-1"]
+            discovery["required_deliverables"]["market_competitor_research"]["evidence_refs"] = ["assumption-1"]
+            write_state(target, "product-discovery.json", discovery)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("verified-fact evidence for every lane", result.stderr)
+            self.assertIn("verified-fact evidence for every deliverable", result.stderr)
+
+    def test_legacy_migration_allowlists_existing_work_without_faking_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            project = read_state(target, "project.json")
+            for key in (
+                "project_classification_policy", "deliverable_product_discovery_policy",
+                "production_start_policy", "product_discovery_state_file",
+                "legacy_allowlist_digest",
+            ):
+                project.pop(key)
+            write_state(target, "project.json", project)
+            (target / ".chief-of-staff/product-discovery.json").unlink()
+            confirm_goal(target)
+            plan = read_state(target, "project-plan.json")
+            old_phase = phase("old-phase", "production", ["old-task"])
+            old_phase.pop("phase_class")
+            plan["phases"] = [old_phase]
+            registry = read_state(target, "task-registry.json")
+            old_task = task("old-task", "production_execution", "old-phase")
+            old_task.pop("work_class")
+            registry["tasks"] = [old_task]
+            write_state(target, "project-plan.json", plan)
+            write_state(target, "task-registry.json", registry)
+            status_path = target / ".chief-of-staff/status.md"
+            status_text = status_path.read_text()
+            status_start = status_text.index("## 产品分类与发现门")
+            status_end = status_text.index("## 已验证事实")
+            status_path.write_text(status_text[:status_start] + status_text[status_end:])
+            result = run(target)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            discovery = read_state(target, "product-discovery.json")
+            self.assertEqual(discovery["classification_status"], "legacy_unclassified")
+            self.assertEqual(discovery["gate_status"], "legacy_pending")
+            self.assertEqual(discovery["legacy_allowlist"]["phase_ids"], ["old-phase"])
+            self.assertEqual(discovery["legacy_allowlist"]["task_ids"], ["old-task"])
+            self.assertIsNotNone(read_state(target, "project.json")["legacy_allowlist_digest"])
+            self.assertEqual(read_state(target, "project-plan.json")["phases"][0]["phase_class"], "legacy_existing")
+            self.assertEqual(read_state(target, "task-registry.json")["tasks"][0]["work_class"], "legacy_existing")
+            self.assertEqual(run(target, "--check").returncode, 0)
+
+            registry = read_state(target, "task-registry.json")
+            registry["tasks"].append(task("new-task", "legacy_existing", "old-phase"))
+            write_state(target, "task-registry.json", registry)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("not in the migration allowlist", result.stderr)
+
+    def test_legacy_migration_when_policy_fields_exist_but_discovery_is_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            (target / ".chief-of-staff/product-discovery.json").unlink()
+            confirm_goal(target)
+            plan = read_state(target, "project-plan.json")
+            old_phase = phase("existing-phase", "production", ["existing-task"])
+            old_phase.pop("phase_class")
+            plan["phases"] = [old_phase]
+            registry = read_state(target, "task-registry.json")
+            old_task = task("existing-task", "production_execution", "existing-phase")
+            old_task.pop("work_class")
+            registry["tasks"] = [old_task]
+            write_state(target, "project-plan.json", plan)
+            write_state(target, "task-registry.json", registry)
+            status_path = target / ".chief-of-staff/status.md"
+            status_text = status_path.read_text()
+            status_start = status_text.index("## 产品分类与发现门")
+            status_end = status_text.index("## 已验证事实")
+            status_path.write_text(status_text[:status_start] + status_text[status_end:])
+            result = run(target)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            discovery = read_state(target, "product-discovery.json")
+            self.assertEqual(discovery["classification_status"], "legacy_unclassified")
+            self.assertEqual(discovery["legacy_allowlist"]["task_ids"], ["existing-task"])
+            self.assertIn("## 产品分类与发现门", status_path.read_text())
+            self.assertIn("legacy pending", status_path.read_text())
+            self.assertEqual(run(target, "--check").returncode, 0)
+
+    def test_legacy_allowlist_mutation_breaks_immutable_digest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            project = read_state(target, "project.json")
+            for key in (
+                "project_classification_policy", "deliverable_product_discovery_policy",
+                "production_start_policy", "product_discovery_state_file",
+                "legacy_allowlist_digest",
+            ):
+                project.pop(key)
+            write_state(target, "project.json", project)
+            (target / ".chief-of-staff/product-discovery.json").unlink()
+            self.assertEqual(run(target).returncode, 0)
+            discovery = read_state(target, "product-discovery.json")
+            discovery["legacy_allowlist"]["task_ids"].append("forged-task")
+            write_state(target, "product-discovery.json", discovery)
+            registry = read_state(target, "task-registry.json")
+            registry["tasks"].append(task("forged-task", "legacy_existing", None))
+            write_state(target, "task-registry.json", registry)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("immutable project digest", result.stderr)
 
 
 if __name__ == "__main__":

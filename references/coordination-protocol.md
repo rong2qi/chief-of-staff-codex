@@ -40,13 +40,19 @@ Use Luna for read-only exploration and routine verification, Terra for the sole 
 
 Before implementation, the Chief proposes and asks the user to confirm the final goal, deliverables, acceptance criteria, non-goals, and constraints. Store the request as `goal_confirmation` and keep `project_status: awaiting_goal`. A new project permits only read-only discovery that materially helps clarify the goal. During migration, already-running non-high-impact tasks may finish, but no new task or phase starts before confirmation.
 
-After confirmation, create an ordered phase plan and start at least one current-phase task. Completing a phase never completes the project by itself. Set `project_status: completed` only when every final acceptance criterion is `verified` and has non-empty evidence.
+After confirmation, classify the project before creating another phase or task. Apply [product-discovery-governance.md](product-discovery-governance.md). A `coordination_only` project records a concrete exemption and may create coordination work only. A `deliverable_project` appoints one Product Manager depth-2 phase lead and completes the four-lane product-discovery gate before creating or starting production execution. Immediately before production task creation, run the initializer's `--check`; a nonzero result is a hard stop.
+
+The Product Manager manages project initiation, requirements analysis, market research, and advisory architecture feasibility through depth-3 temporary helpers that cannot delegate. If the runtime lacks subagents, the Product Manager completes the four lanes itself and records the limitation without dropping any artifact or evidence requirement. Product discovery cannot bind the later Technical Lead's architecture, bypass the Creative Director, invent market/user evidence, or authorize outreach, paid/restricted data, or another protected action.
+
+After the applicable gate passes or exemption validates, create the next ordered phase and start at least one current-phase task. Completing a phase never completes the project by itself. Set `project_status: completed` only when every final acceptance criterion is `verified` and has non-empty evidence.
 
 While the project is unfinished, keep an active or queued phase task unless the project is explicitly `awaiting_user` or verifiably `blocked`. If every task stops before final acceptance, dispatch the next safe in-scope phase immediately.
 
-When the projected continuation policy is `advance_best_safe_in_scope_path`, select and execute the strongest evidence-backed safe in-scope continuation without opening an operator choice. Do not offer stopping, preserving a failed state, or delaying as peer options while such a path exists. Escalate only when continuing itself requires a new permission or a new Chief. Ordinary failure remains Chief-owned while a bounded diagnostic, repair, or verification path remains. The policy does not authorize protected actions, bypass visual selection, conceal safety evidence, transfer ownership, or expand the confirmed goal.
+When the projected continuation policy is `advance_best_safe_in_scope_path`, select and execute the strongest evidence-backed safe in-scope continuation without opening an operator choice. Do not offer stopping, preserving a failed state, or delaying as peer options while such a path exists. Escalate only when continuing itself requires a new permission or a new Chief. Ordinary failure remains Chief-owned while a bounded diagnostic, repair, or verification path remains. The policy does not authorize production before the product gate, protected actions, bypassed visual selection, concealed safety evidence, transferred ownership, or expanded goals.
 
 ## Durable task naming and state
+
+The current Chief remains pinned. For migration or takeover, apply [pin-inheritance-governance.md](pin-inheritance-governance.md): after `MIGRATION_READY` parity and before authority changes or predecessor archival, independently call `list_threads` and require the successor's exact task ID in `pinnedThreads`. A pin operation receipt is not proof; failed verification cannot transfer control.
 
 Title every durable child task `职务｜工作内容`. Keep the role short and make the work content outcome-oriented, for example `技术负责人｜支付架构决策`.
 
