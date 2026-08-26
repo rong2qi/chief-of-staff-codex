@@ -68,9 +68,15 @@ python3 scripts/configure_preferences.py \
   `pinnedThreads` check before takeover; a `pinned:true` receipt is not proof.
   Only mandatory or explicitly approved lineages can create one same-lineage
   replacement after a safe `MIGRATION_READY` handoff.
-- `grandfathered_optional_chiefs`, `protected_manual_thread_ids`, and
+- `grandmothered_optional_chiefs`, `protected_manual_thread_ids`, and
   `invalid_successor_thread_ids` are private live-state lists. Public examples
   keep them empty and never publish real task IDs.
+
+Pre-matriarchal profiles are normalized through one compatibility shim. A
+legacy-only list is moved to `grandmothered_optional_chiefs`; a transition
+profile containing both aliases is accepted only when their values are exactly
+equal. Any mismatch fails closed. Persisted output contains only the current
+field, so repeated migration is idempotent.
 
 - `report_review_mode`: `exception_only` lets the project Chief review routine
   child handoffs and escalates only enumerated exceptions plus final project

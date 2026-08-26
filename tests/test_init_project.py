@@ -5,6 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.legacy_terminology_migration import (
+    LEGACY_AUTHORIZATION_STATUS,
+    LEGACY_PIN_STATUS,
+    LEGACY_ROLE_CLASS,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "init_project.py"
@@ -424,6 +430,21 @@ class InitProjectTests(unittest.TestCase):
                 self.assertIn("pinnedThreads", text)
                 self.assertIn("pin_verification_failed", text)
 
+    def test_pre_matriarchal_agents_contract_upgrades_without_conflict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            agents_path = target / "AGENTS.md"
+            agents = agents_path.read_text()
+            agents = agents.replace(
+                "Optional slots default to six and remain bounded by observed capacity. Historically retained slots are grandmothered optional Chiefs; they remain unchanged pending value review and do not inherit automatically. Protect every manual non-Chief pin.",
+                "Optional slots default to six and remain bounded by observed capacity. Protect every manual non-Chief pin.",
+            )
+            agents_path.write_text(agents)
+            upgraded = run(target)
+            self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
+            self.assertIn("grandmothered optional Chiefs", agents_path.read_text())
+
     def test_fresh_ordinary_chief_is_unpinned_and_cannot_enter_successor_flow(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
@@ -499,7 +520,7 @@ class InitProjectTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("exact-ID pin verification", result.stderr)
 
-    def test_legacy_pinned_project_is_preserved_as_grandfathered(self):
+    def test_legacy_pinned_project_is_preserved_as_grandmothered(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
@@ -509,11 +530,38 @@ class InitProjectTests(unittest.TestCase):
             write_state(target, "project.json", project)
             self.assertEqual(run(target).returncode, 0)
             migrated = read_state(target, "pin-state.json")
-            self.assertEqual(migrated["role_class"], "grandfathered_optional_chief")
-            self.assertEqual(migrated["authorization_status"], "grandfathered_pending_review")
-            self.assertEqual(migrated["pin_status"], "grandfathered_preserved")
+            self.assertEqual(migrated["role_class"], "grandmothered_optional_chief")
+            self.assertEqual(migrated["authorization_status"], "grandmothered_pending_review")
+            self.assertEqual(migrated["pin_status"], "grandmothered_preserved")
             self.assertIsNone(migrated["verified_thread_id"])
             self.assertEqual(run(target, "--check").returncode, 0)
+
+    def test_pre_matriarchal_pin_state_migrates_once_to_current_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            project = read_state(target, "project.json")
+            project["pin_primary_task"] = True
+            write_state(target, "project.json", project)
+            state = read_state(target, "pin-state.json")
+            state.update({
+                "role_class": LEGACY_ROLE_CLASS,
+                "authorization_status": LEGACY_AUTHORIZATION_STATUS,
+                "pin_status": LEGACY_PIN_STATUS,
+            })
+            write_state(target, "pin-state.json", state)
+            compatibility_check = run(target, "--check")
+            self.assertEqual(compatibility_check.returncode, 0, compatibility_check.stderr)
+            first = run(target)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            migrated = read_state(target, "pin-state.json")
+            self.assertEqual(migrated["role_class"], "grandmothered_optional_chief")
+            self.assertEqual(migrated["authorization_status"], "grandmothered_pending_review")
+            self.assertEqual(migrated["pin_status"], "grandmothered_preserved")
+            before = (target / ".chief-of-staff" / "pin-state.json").read_bytes()
+            second = run(target)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertEqual(before, (target / ".chief-of-staff" / "pin-state.json").read_bytes())
 
     def test_status_requires_all_governance_headings(self):
         with tempfile.TemporaryDirectory() as tmp:

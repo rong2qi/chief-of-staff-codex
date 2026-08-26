@@ -6,13 +6,13 @@ Pinning is scarce operator-controlled navigation state, not a universal Chief he
 
 The only mandatory core roles are `general_office`, `todo`, `creative_director`, and `context_migration_monitor`, including a verified valid successor in the same lineage. Optional product Chief slots default to six, but observed capacity and protected manual pins are authoritative. An optional Chief may be appointed, pinned, unpinned, replaced, or inherit a slot only after a general-office recommendation and the operator's explicit approval of that exact change.
 
-Grandfathered optional Chiefs may preserve their current pin until value review. Grandfathering grants no automatic successor inheritance and public files never contain their live IDs. Paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs are excluded by default; the central context migration monitor remains mandatory.
+Grandmothered optional Chiefs may preserve their current pin until value review. Grandmothering grants no automatic successor inheritance and public files never contain their live IDs. Paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs are excluded by default; the central context migration monitor remains mandatory.
 
 ## Recommendation and capacity
 
 The general office owns one pending recommendation pack containing at most three candidates. TODO performs read-only checks of exact identity, currentness, duplication, evidence freshness, observed capacity, and lineage. It neither appoints nor pins.
 
-Protect every manual non-Chief pin. When capacity is full, issue only a paired replacement recommendation against an approved or grandfathered optional slot. Never evict automatically, and never treat full capacity as a task defect.
+Protect every manual non-Chief pin. When capacity is full, issue only a paired replacement recommendation against an approved or grandmothered optional slot. Never evict automatically, and never treat full capacity as a task defect.
 
 Pin approval is narrow: it does not confirm the project goal, approve the Product Manager brief, pass product discovery, or authorize engineering, design, content, production, a protected action, or a visual choice. A nonexistent optional Chief is created only after appointment and pin approval; it still begins behind the normal goal-confirmation and product-discovery gates.
 

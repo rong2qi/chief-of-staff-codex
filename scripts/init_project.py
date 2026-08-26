@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from preference_lib import PreferenceError, read_json, require_valid, validate_preferences
+from legacy_terminology_migration import CURRENT_ROLE_CLASS, migrate_pin_state_input
 
 try:
     import tomllib
@@ -166,6 +167,8 @@ def migrate_mutable_state(
         return value, False
 
     changed = False
+    if relative.name == "pin-state.json":
+        value, changed = migrate_pin_state_input(value)
     if relative.name == "task-registry.json" and isinstance(value.get("tasks"), list):
         for task in value["tasks"]:
             if not isinstance(task, dict):
@@ -316,13 +319,13 @@ def legacy_product_discovery(
     return encoded_json(state)
 
 
-def grandfathered_pin_state(rendered_template: bytes) -> bytes:
+def grandmothered_pin_state(rendered_template: bytes) -> bytes:
     state = json.loads(rendered_template.decode("utf-8"))
     state.update(
         {
-            "role_class": "grandfathered_optional_chief",
-            "authorization_status": "grandfathered_pending_review",
-            "pin_status": "grandfathered_preserved",
+            "role_class": "grandmothered_optional_chief",
+            "authorization_status": "grandmothered_pending_review",
+            "pin_status": "grandmothered_preserved",
             "successor_inheritance_eligible": False,
         }
     )
@@ -674,17 +677,17 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
         pin_status = value.get("pin_status")
         if role_class not in {
             "ordinary_chief", "mandatory_core", "approved_optional_chief",
-            "grandfathered_optional_chief",
+            "grandmothered_optional_chief",
         }:
             errors.append(f"role_class in {relative} is invalid")
         if authorization_status not in {
             "not_required", "not_requested", "pending", "approved",
-            "grandfathered_pending_review", "revoked",
+            "grandmothered_pending_review", "revoked",
         }:
             errors.append(f"authorization_status in {relative} is invalid")
         if pin_status not in {
             "unpinned", "pending_verification", "verified", "verification_failed",
-            "capacity_waiting", "grandfathered_preserved", "superseded",
+            "capacity_waiting", "grandmothered_preserved", "superseded",
         }:
             errors.append(f"pin_status in {relative} is invalid")
         for key in (
@@ -764,13 +767,13 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 "pending_verification", "verified", "verification_failed", "capacity_waiting",
             }:
                 errors.append(f"approved_optional_chief in {relative} requires an approved pin workflow")
-        if role_class == "grandfathered_optional_chief":
-            if authorization_status != "grandfathered_pending_review":
-                errors.append(f"grandfathered_optional_chief in {relative} requires pending value review")
-            if pin_status not in {"grandfathered_preserved", "verified", "superseded"}:
-                errors.append(f"grandfathered_optional_chief in {relative} has invalid pin state")
+        if role_class == "grandmothered_optional_chief":
+            if authorization_status != "grandmothered_pending_review":
+                errors.append(f"grandmothered_optional_chief in {relative} requires pending value review")
+            if pin_status not in {"grandmothered_preserved", "verified", "superseded"}:
+                errors.append(f"grandmothered_optional_chief in {relative} has invalid pin state")
             if eligible:
-                errors.append(f"grandfathered_optional_chief in {relative} cannot create a replacement before approval")
+                errors.append(f"grandmothered_optional_chief in {relative} cannot create a replacement before approval")
         if authorization_status == "pending" and not value.get("recommendation_ref"):
             errors.append(f"pending pin authorization in {relative} requires recommendation_ref")
         if pin_status == "verified":
@@ -1392,6 +1395,8 @@ def validate(target: Path) -> list[str]:
         if path.is_file():
             try:
                 value = json.loads(path.read_text(encoding="utf-8"))
+                if relative.name == "pin-state.json" and isinstance(value, dict):
+                    value, _ = migrate_pin_state_input(value)
                 validate_state(relative, value, errors)
             except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 errors.append(f"invalid JSON in {relative}: {exc}")
@@ -1405,14 +1410,16 @@ def validate(target: Path) -> list[str]:
         try:
             project = json.loads(project_path.read_text(encoding="utf-8"))
             pin_state = json.loads(pin_state_path.read_text(encoding="utf-8"))
+            if isinstance(pin_state, dict):
+                pin_state, _ = migrate_pin_state_input(pin_state)
             pin_primary = project.get("pin_primary_task")
             role_class = pin_state.get("role_class")
             if role_class == "ordinary_chief" and pin_primary is not False:
                 errors.append("ordinary Chief requires pin_primary_task=false")
             if role_class in {"mandatory_core", "approved_optional_chief"} and pin_primary is not True:
                 errors.append("mandatory or approved optional Chief requires pin_primary_task=true")
-            if role_class == "grandfathered_optional_chief" and pin_primary is not True:
-                errors.append("grandfathered optional Chief preserves pin_primary_task=true pending review")
+            if role_class == "grandmothered_optional_chief" and pin_primary is not True:
+                errors.append("grandmothered optional Chief preserves pin_primary_task=true pending review")
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             pass
     if all(path.is_file() for path in (project_path, discovery_path, plan_path, registry_path)):
@@ -1647,6 +1654,12 @@ def initialize(
     existing_project = read_json_object(target / ".chief-of-staff" / "project.json")
     discovery_path = target / ".chief-of-staff" / "product-discovery.json"
     pin_state_path = target / ".chief-of-staff" / "pin-state.json"
+    existing_pin_state = read_json_object(pin_state_path)
+    normalized_pin_state = (
+        migrate_pin_state_input(existing_pin_state)[0]
+        if existing_pin_state is not None
+        else None
+    )
     legacy_upgrade = bool(
         existing_project is not None
         and (
@@ -1658,6 +1671,13 @@ def initialize(
         existing_project is not None
         and existing_project.get("pin_primary_task") is True
         and not pin_state_path.is_file()
+    )
+    retained_pin_compatibility = bool(
+        legacy_pin_upgrade
+        or (
+            normalized_pin_state is not None
+            and normalized_pin_state.get("role_class") == CURRENT_ROLE_CLASS
+        )
     )
     existing_plan = read_json_object(target / ".chief-of-staff" / "project-plan.json")
     existing_registry = read_json_object(target / ".chief-of-staff" / "task-registry.json")
@@ -1686,7 +1706,7 @@ def initialize(
                 task_ids=legacy_task_ids,
             )
         if relative == Path(".chief-of-staff/pin-state.json") and legacy_pin_upgrade:
-            expected = grandfathered_pin_state(expected)
+            expected = grandmothered_pin_state(expected)
         cursor = target
         unsafe_parent = False
         for part in relative.parts[:-1]:
@@ -1757,9 +1777,9 @@ def initialize(
                 try:
                     existing_project = json.loads(destination.read_text(encoding="utf-8"))
                     expected_project = json.loads(expected.decode("utf-8"))
-                    grandfathered_project = dict(expected_project)
-                    grandfathered_project["pin_primary_task"] = True
-                    if legacy_pin_upgrade and existing_project == grandfathered_project:
+                    grandmothered_project = dict(expected_project)
+                    grandmothered_project["pin_primary_task"] = True
+                    if retained_pin_compatibility and existing_project == grandmothered_project:
                         continue
                     # Upgrade an older managed project by adding only missing defaults.
                     upgraded_project = dict(existing_project)
@@ -1880,7 +1900,7 @@ def initialize(
                 }
                 narrow_pin_lines = """- Ordinary project Chiefs default to unpinned (`pin_primary_task=false`). That state is not a defect and never authorizes creating a successor, asking the operator to pin it, or archiving its predecessor.
 - Only the central `general_office`, `todo`, `creative_director`, and `context_migration_monitor` roles require a pin. An optional product Chief may be created, pinned, unpinned, replaced, or inherit a pin only after the general office recommends it and the operator explicitly approves that exact change. Approval to appoint or pin does not confirm the project goal or authorize engineering, design, content, or production; the Product Manager discovery gate still applies.
-- Optional slots default to six and remain bounded by observed capacity. Protect every manual non-Chief pin. If capacity is full, produce only a paired replacement recommendation; never evict automatically. The general office may present at most three candidates in one pending pack, and TODO only verifies identity, currentness, duplication, evidence freshness, capacity, and lineage. Exclude paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs by default; the central context migration monitor remains a mandatory exception.
+- Optional slots default to six and remain bounded by observed capacity. Historically retained slots are grandmothered optional Chiefs; they remain unchanged pending value review and do not inherit automatically. Protect every manual non-Chief pin. If capacity is full, produce only a paired replacement recommendation; never evict automatically. The general office may present at most three candidates in one pending pack, and TODO only verifies identity, currentness, duplication, evidence freshness, capacity, and lineage. Exclude paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs by default; the central context migration monitor remains a mandatory exception.
 - A successful pin API receipt is not proof. For a mandatory core role or operator-approved optional lineage, call `list_threads` and require the exact task ID in `pinnedThreads`; record a failed independent check as `pin_verification_failed`. A capacity-full result is not a task defect.
 - Only an eligible mandatory or approved lineage may use successor pin inheritance. After `MIGRATION_READY` and a safe same-lineage handoff, create at most one replacement, verify its exact ID in a fresh `pinnedThreads` result before takeover or authoritative-entry switching, and archive the predecessor only after verified takeover. Never delete a predecessor, duplicate a Chief, change scope or pause state, or bypass an approval.
 """
@@ -1892,6 +1912,11 @@ def initialize(
                     "",
                 )
                 compatibility_variants.add(old_pin_contract.encode("utf-8"))
+                previous_matriarchal_contract = current_text.replace(
+                    "- Optional slots default to six and remain bounded by observed capacity. Historically retained slots are grandmothered optional Chiefs; they remain unchanged pending value review and do not inherit automatically. Protect every manual non-Chief pin.",
+                    "- Optional slots default to six and remain bounded by observed capacity. Protect every manual non-Chief pin.",
+                )
+                compatibility_variants.add(previous_matriarchal_contract.encode("utf-8"))
                 old_audio = b"- Generate separate written and spoken audio only when `audio_playback.enabled` is true. Use only its configured storage root; unavailable audio falls back to text without writing elsewhere."
                 new_audio = b"- With `provider: host_builtin`, keep written/spoken text available to the host voice or read-aloud control and generate no files. Only opt-in `auto` or `macos_say` renders separate written/spoken attachments in the configured storage root; unavailable audio falls back to text without writing elsewhere."
                 compatibility_variants.update(

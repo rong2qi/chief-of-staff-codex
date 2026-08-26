@@ -9,8 +9,16 @@ from pathlib import Path
 
 from scripts.preference_lib import (
     PIN_CRITERIA,
+    PreferenceError,
+    atomic_write_json,
+    read_json,
     recommend_optional_chief_pins,
     validate_preferences,
+)
+from scripts.legacy_terminology_migration import (
+    CURRENT_PROFILE_KEY,
+    LEGACY_PROFILE_KEY,
+    LEGACY_SNAPSHOT_PIN_CLASS,
 )
 
 
@@ -65,9 +73,46 @@ class PreferenceTests(unittest.TestCase):
             self.assertTrue(all(item["thread_id"] is None for item in pin["mandatory_core_roles"]))
             self.assertEqual(pin["optional_chief_slots"]["limit"], 6)
             self.assertFalse(pin["optional_chief_slots"]["default_pin_primary_task"])
-            self.assertEqual(pin["grandfathered_optional_chiefs"], [])
+            self.assertEqual(pin["grandmothered_optional_chiefs"], [])
             self.assertEqual(pin["protected_manual_thread_ids"], [])
             self.assertEqual(pin["invalid_successor_thread_ids"], [])
+
+    def test_legacy_profile_alias_migrates_one_way_and_dual_equal_is_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            profile = self.enabled_pin_profile()
+            current_value = [{"title": "Historical product Chief", "thread_id": "optional-1"}]
+            profile["pin_governance"][CURRENT_PROFILE_KEY] = current_value
+            profile["pin_governance"][LEGACY_PROFILE_KEY] = json.loads(json.dumps(current_value))
+            source = root / "legacy-profile.json"
+            source.write_text(json.dumps(profile), encoding="utf-8")
+            checked = run_config("--check", source)
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            migrated = read_json(source)
+            self.assertEqual(migrated["pin_governance"][CURRENT_PROFILE_KEY], current_value)
+            self.assertNotIn(LEGACY_PROFILE_KEY, migrated["pin_governance"])
+            output = root / "normalized-profile.json"
+            atomic_write_json(output, profile)
+            persisted = json.loads(output.read_text())
+            self.assertIn(CURRENT_PROFILE_KEY, persisted["pin_governance"])
+            self.assertNotIn(LEGACY_PROFILE_KEY, persisted["pin_governance"])
+
+    def test_conflicting_legacy_profile_alias_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = self.enabled_pin_profile()
+            profile["pin_governance"][CURRENT_PROFILE_KEY] = []
+            profile["pin_governance"][LEGACY_PROFILE_KEY] = [
+                {"title": "Conflicting Chief", "thread_id": "different"}
+            ]
+            errors = validate_preferences(profile)
+            self.assertEqual(errors, ["legacy and current pin-governance aliases disagree"])
+            path = Path(tmp) / "conflict.json"
+            path.write_text(json.dumps(profile), encoding="utf-8")
+            checked = run_config("--check", path)
+            self.assertEqual(checked.returncode, 2)
+            self.assertIn("aliases disagree", checked.stderr)
+            with self.assertRaises(PreferenceError):
+                read_json(path)
 
     def test_enabled_pin_governance_requires_four_unique_exact_ids(self):
         profile = self.enabled_pin_profile()
@@ -107,7 +152,7 @@ class PreferenceTests(unittest.TestCase):
         low = {key: 0.1 for key in PIN_CRITERIA}
         pinned = [
             {"thread_id": "manual", "title": "Manual", "pin_class": "manual_non_chief"},
-            {"thread_id": "old-optional", "title": "Old", "pin_class": "approved_optional", "signals": low},
+            {"thread_id": "old-optional", "title": "Old", "pin_class": LEGACY_SNAPSHOT_PIN_CLASS, "signals": low},
         ]
         result = recommend_optional_chief_pins(profile, {
             "observed_capacity": 2,

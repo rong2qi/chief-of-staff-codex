@@ -11,6 +11,19 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+try:
+    from .legacy_terminology_migration import (
+        LegacyTerminologyConflict,
+        migrate_pin_snapshot_input,
+        migrate_profile_input,
+    )
+except ImportError:  # Direct script execution keeps the scripts directory on sys.path.
+    from legacy_terminology_migration import (
+        LegacyTerminologyConflict,
+        migrate_pin_snapshot_input,
+        migrate_profile_input,
+    )
+
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 CORE_PROFILE = SKILL_ROOT / "assets" / "operator-preferences.example.json"
@@ -45,7 +58,11 @@ def read_json(path: Path) -> dict[str, Any]:
         raise PreferenceError(f"cannot read preference profile {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise PreferenceError("preference profile must be a JSON object")
-    return value
+    try:
+        migrated, _ = migrate_profile_input(value)
+    except LegacyTerminologyConflict as exc:
+        raise PreferenceError(str(exc)) from exc
+    return migrated
 
 
 def preset_profile(name: str) -> dict[str, Any]:
@@ -169,14 +186,14 @@ def _validate_pin_governance(profile: dict[str, Any], errors: list[str]) -> None
     if successor.get("replacement_policy") != "single_same_lineage_after_safe_handoff":
         errors.append("pin_governance.successor_inheritance.replacement_policy is invalid")
 
-    grandfathered = pin.get("grandfathered_optional_chiefs")
-    if not isinstance(grandfathered, list):
-        errors.append("pin_governance.grandfathered_optional_chiefs must be an array")
-        grandfathered = []
-    grandfathered_ids: list[str] = []
-    grandfathered_titles: list[str] = []
-    for index, item in enumerate(grandfathered):
-        label = f"pin_governance.grandfathered_optional_chiefs[{index}]"
+    grandmothered = pin.get("grandmothered_optional_chiefs")
+    if not isinstance(grandmothered, list):
+        errors.append("pin_governance.grandmothered_optional_chiefs must be an array")
+        grandmothered = []
+    grandmothered_ids: list[str] = []
+    grandmothered_titles: list[str] = []
+    for index, item in enumerate(grandmothered):
+        label = f"pin_governance.grandmothered_optional_chiefs[{index}]"
         if not isinstance(item, dict):
             errors.append(f"{label} must be an object")
             continue
@@ -185,15 +202,15 @@ def _validate_pin_governance(profile: dict[str, Any], errors: list[str]) -> None
         if not isinstance(title, str) or not title:
             errors.append(f"{label}.title must be a non-empty string")
         else:
-            grandfathered_titles.append(title)
+            grandmothered_titles.append(title)
         if not isinstance(thread_id, str) or not thread_id:
             errors.append(f"{label}.thread_id must be a non-empty string")
         else:
-            grandfathered_ids.append(thread_id)
-    if len(grandfathered_ids) != len(set(grandfathered_ids)):
-        errors.append("pin_governance grandfathered thread IDs must be unique")
-    if len(grandfathered_titles) != len(set(grandfathered_titles)):
-        errors.append("pin_governance grandfathered titles must be unique")
+            grandmothered_ids.append(thread_id)
+    if len(grandmothered_ids) != len(set(grandmothered_ids)):
+        errors.append("pin_governance grandmothered thread IDs must be unique")
+    if len(grandmothered_titles) != len(set(grandmothered_titles)):
+        errors.append("pin_governance grandmothered titles must be unique")
 
     protected = _unique_string_list(
         pin.get("protected_manual_thread_ids"),
@@ -203,7 +220,7 @@ def _validate_pin_governance(profile: dict[str, Any], errors: list[str]) -> None
         pin.get("invalid_successor_thread_ids"),
         "pin_governance.invalid_successor_thread_ids", errors,
     )
-    eligible_ids = set(core_thread_ids) | set(grandfathered_ids)
+    eligible_ids = set(core_thread_ids) | set(grandmothered_ids)
     if eligible_ids.intersection(protected):
         errors.append("protected manual pins cannot duplicate Chief lineage IDs")
     if eligible_ids.intersection(invalid):
@@ -214,6 +231,10 @@ def _validate_pin_governance(profile: dict[str, Any], errors: list[str]) -> None
 
 def validate_preferences(profile: dict[str, Any]) -> list[str]:
     errors: list[str] = []
+    try:
+        profile, _ = migrate_profile_input(profile)
+    except LegacyTerminologyConflict as exc:
+        return [str(exc)]
     if profile.get("schema_version") != 1:
         errors.append("schema_version must be 1")
     if profile.get("preset") not in {"core", "operator-controlled-bilingual", "custom"}:
@@ -383,6 +404,11 @@ def recommend_optional_chief_pins(
     profile: dict[str, Any], snapshot: dict[str, Any]
 ) -> dict[str, Any]:
     """Return a read-only recommendation packet; never pin, unpin, or create a task."""
+    try:
+        profile, _ = migrate_profile_input(profile)
+        snapshot, _ = migrate_pin_snapshot_input(snapshot)
+    except LegacyTerminologyConflict as exc:
+        raise PreferenceError(str(exc)) from exc
     require_valid(profile)
     pin = profile["pin_governance"]
     if pin["enabled"] is not True:
@@ -435,11 +461,11 @@ def recommend_optional_chief_pins(
             raise PreferenceError("pin snapshot pinned thread IDs must be unique")
         pinned_ids.add(thread_id)
         if pin_class not in {
-            "mandatory_core", "approved_optional", "grandfathered_optional",
+            "mandatory_core", "approved_optional", "grandmothered_optional",
             "manual_non_chief",
         }:
             raise PreferenceError(f"{label}.pin_class is invalid")
-        if pin_class in {"approved_optional", "grandfathered_optional"}:
+        if pin_class in {"approved_optional", "grandmothered_optional"}:
             optional_pinned += 1
             score = _pin_signal_score(item.get("signals"), label)
             if thread_id not in protected_ids and thread_id not in core_ids:
@@ -559,6 +585,10 @@ def atomic_write_text(path: Path, text: str) -> None:
 
 
 def atomic_write_json(path: Path, profile: dict[str, Any]) -> None:
+    try:
+        profile, _ = migrate_profile_input(profile)
+    except LegacyTerminologyConflict as exc:
+        raise PreferenceError(str(exc)) from exc
     require_valid(profile)
     atomic_write_text(path, json.dumps(profile, ensure_ascii=False, indent=2) + "\n")
 

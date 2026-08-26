@@ -54,7 +54,7 @@
       "receipt_is_not_proof": true,
       "replacement_policy": "single_same_lineage_after_safe_handoff"
     },
-    "grandfathered_optional_chiefs": [],
+    "grandmothered_optional_chiefs": [],
     "protected_manual_thread_ids": [],
     "invalid_successor_thread_ids": []
   },

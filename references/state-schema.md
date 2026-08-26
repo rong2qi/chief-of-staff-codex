@@ -7,7 +7,7 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `schema_version`: currently `1`.
 - `project_name`: initialized project name.
 - `primary_task_title`: generated as `Chief of <project_name>`, for example `Chief of 个人web`.
-- `pin_primary_task`: `false` for an ordinary Chief. It may be `true` only for a mandatory core role, an operator-approved optional Chief, or a grandfathered optional Chief pending value review. The matching evidence lives in `pin-state.json`.
+- `pin_primary_task`: `false` for an ordinary Chief. It may be `true` only for a mandatory core role, an operator-approved optional Chief, or a grandmothered optional Chief pending value review. The matching evidence lives in `pin-state.json`.
 - `report_review_mode`: `all_reports` or `exception_only`. `exception_only` lets the Chief approve routine child handoffs while preserving operator gates for enumerated exceptions and final project completion.
 - `report_approval_required`: backward-compatible boolean projection; `true` only for `all_reports`, `false` for `exception_only`.
 - `governance_model`: `standard` or `chair_led_cabinet`.
@@ -48,15 +48,17 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 
 ## pin-state.json
 
-- `role_class`: `ordinary_chief`, `mandatory_core`, `approved_optional_chief`, or `grandfathered_optional_chief`.
-- `authorization_status`: recommendation/approval state. Approved optional roles require both `recommendation_ref` and `operator_approval_ref`; grandfathered roles remain `grandfathered_pending_review` and cannot inherit a slot before approval.
-- `pin_status`: `unpinned`, `pending_verification`, `verified`, `verification_failed`, `capacity_waiting`, `grandfathered_preserved`, or `superseded`. Ordinary Chiefs remain unpinned; full capacity is a waiting condition, not a defect.
+- `role_class`: `ordinary_chief`, `mandatory_core`, `approved_optional_chief`, or `grandmothered_optional_chief`.
+- `authorization_status`: recommendation/approval state. Approved optional roles require both `recommendation_ref` and `operator_approval_ref`; grandmothered roles remain `grandmothered_pending_review` and cannot inherit a slot before approval.
+- `pin_status`: `unpinned`, `pending_verification`, `verified`, `verification_failed`, `capacity_waiting`, `grandmothered_preserved`, or `superseded`. Ordinary Chiefs remain unpinned; full capacity is a waiting condition, not a defect.
 - `verified_thread_id` and `verified_at`: exact-ID evidence from a fresh `list_threads` result. A pin-operation receipt is never sufficient.
 - `successor_inheritance_eligible`: true only for a mandatory or approved optional lineage.
 - `capacity_status` and `exclusion_reasons`: observed recommendation inputs without any automatic mutation.
 - `successor`: bounded same-lineage handoff state. Takeover requires `MIGRATION_READY`, exact-list verification, and one safe replacement at most; predecessor archival requires verified takeover.
 
-New projects start as ordinary and unpinned. An older managed project with `pin_primary_task=true` and no pin state migrates to an ID-free `grandfathered_optional_chief` record so its existing pin is preserved pending value review rather than silently removed.
+New projects start as ordinary and unpinned. An older managed project with `pin_primary_task=true` and no pin state migrates to an ID-free `grandmothered_optional_chief` record so its existing pin is preserved pending value review rather than silently removed.
+
+Pre-matriarchal pin-state enum values are accepted only by the centralized input migration shim, rewritten once to the current grandmothered enum values, and never emitted again. The migration is idempotent and does not change slot eligibility, approval, capacity, or successor behavior.
 
 ## product-discovery.json
 
