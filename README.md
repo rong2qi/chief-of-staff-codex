@@ -14,14 +14,14 @@
 
 ### 它能做什么
 
-Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。主任务会根据项目名自动命名为 `Chief of <项目名>`，例如 `Chief of 个人web`，并在初始化后尝试置顶且独立回查 `pinnedThreads`。你只需要和这个主任务交流；它负责拆解目标、创建需要长期独立上下文的任务、收集结构化汇报，并向你提供最终总结。
+Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。主任务会根据项目名自动命名为 `Chief of <项目名>`，例如 `Chief of 个人web`。普通 Chief 初始化后默认不置顶；中央角色和妈妈批准的可选席位才进入置顶流程。你只需要和这个主任务交流；它负责拆解目标、创建需要长期独立上下文的任务、收集结构化汇报，并向你提供最终总结。
 
 每个长期任务可以根据工作内容自动选择已安装的 Skill，也可以召集临时 subagents 完成范围明确的调研、评审、测试或讨论。
 
 ### 核心能力
 
 - 每个项目拥有可区分的主任务名称：`Chief of <项目名>`。
-- 现任 Chief 与通过接管核验的 successor 都必须保持置顶；操作回执不算证据，只有精确 task ID 出现在新的 `pinnedThreads` 查询中才报告成功或切换权威入口。
+- 普通 Chief 默认不置顶；只有四个中央角色及妈妈批准的可选产品 Chief 席位需要置顶和受控继承。操作回执不算证据，eligible lineage 只有在精确 task ID 出现在新的 `pinnedThreads` 查询中后才能切换权威入口。
 - 默认采用 `exception_only`：Chief 验收普通岗位里程碑和最终交接，只有列明例外与项目最终完成才进入操作者批复；Chief 会批量收集同时到达的汇报，避免遗漏。
 - Chief 必须先与你确认最终目标、交付物和验收标准；未达成最终验收前持续分阶段推进。
 - 目标确认后必须分类：交付型项目先由 depth-2 产品经理完成四路产品发现与立项门，才可创建或启动生产岗位；纯同步/推送、会议总结、备案/流程推进或只读汇总可记录理由后豁免，范围扩展时立即重分类。
@@ -136,7 +136,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 {
   "project_name": "个人web",
   "primary_task_title": "Chief of 个人web",
-  "pin_primary_task": true,
+  "pin_primary_task": false,
   "report_review_mode": "exception_only",
   "report_approval_required": false,
   "governance_model": "standard",
@@ -183,7 +183,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 
 交付型项目改用 `deliverable_project`，任命产品经理并完成四条证据线后，`gate_status` 才能变为 `passed`。
 
-Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。所有 Chief 都将 `pin_primary_task` 设为 `true` 并在任职期间保持置顶。置顶接口返回成功并不够，Skill 必须调用 `list_threads`，确认精确 task ID 出现在 `pinnedThreads` 后才能报告成功。若回查失败，记录 `pin_verification_failed`；在安全交接点归档旧 Chief 并注明 `unable_to_pin`，随后只在同一 saved project 和既有工作状态中创建一个接续 Chief，完整交接目标、阶段、未决审批/TODO、写入权、证据与暂停状态，再以精确 ID 重新验证。旧任务保留，不得运行重复控制面、改变范围或暂停状态、或借置顶绕过审批。
+Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。普通 Chief 默认不置顶（`pin_primary_task=false`），未置顶不是故障。只有 general office、TODO、Creative Director、context migration monitor 四个中央角色强制置顶；可选产品 Chief 必须先由一般办公室形成最多 3 名、最多 1 个待决包，再由 TODO 只读核验身份、时效、重复、证据新鲜度、容量与 lineage，最后由妈妈逐项批准任命和置顶。默认最多 6 个可选席位，并保护人工 non-Chief pins；容量满时只给 paired replacement recommendation，不自动挤出。置顶批准不等于目标确认，也不授权工程、设计或生产，产品经理与四条 discovery lane 的产品门保持不变。仅 mandatory/approved lineage 可在安全交接和 `MIGRATION_READY` 后建立一个 replacement；`pinned:true` 回执不是证据，必须用 fresh `list_threads` 精确 ID 复核后才能接管和归档 predecessor。
 
 初始化器还会创建：
 
@@ -198,6 +198,7 @@ AGENTS.md
     └── arbiter.toml
 .chief-of-staff/
 ├── project.json
+├── pin-state.json
 ├── project-plan.json
 ├── product-discovery.json
 ├── task-registry.json
@@ -307,7 +308,7 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 仓库同时提供 `context-handoff` Skill。它只使用最新输入 token 与模型上下文窗口的比值：75%刷新检查点，85%在安全边界创建 `原对话名｜续N`，95%进入紧急迁移。累计 token 和账户限额不会被误当成上下文占用。
 
-项目迁移包保存在 `.codex/context-migrations/`，无项目任务保存在 `~/.codex/context-migrations/`。新对话必须返回 `MIGRATION_READY` 并核对目标、审批、任务关系、写入权、Git 状态、证据、下一步、暂停状态和全局规则。完成 parity 后、接受接管/切换权威入口/归档 predecessor 前，必须先置顶 successor，再用 `list_threads` 独立确认 successor 的精确 task ID 位于 `pinnedThreads`；`pinned: true` 只表示操作已受理。失败则记录 `pin_verification_failed`，不接受接管，并按安全边界的同项目单 replacement 流程处理。旧对话不会删除，不得重复 Chief、改变范围、恢复暂停或绕过审批。若原生压缩降低占用则取消过期触发；若无法证明同一脏工作树连续性则保留旧对话并请求人工选择。
+项目迁移包保存在 `.codex/context-migrations/`，无项目任务保存在 `~/.codex/context-migrations/`。新对话必须返回 `MIGRATION_READY` 并核对目标、审批、任务关系、写入权、Git 状态、证据、下一步、暂停状态和全局规则。普通未获批 Chief 的 successor 不继承置顶，也不因未置顶触发替换。只有 mandatory 或妈妈批准的 optional lineage，在完成 parity 后、接受接管/切换权威入口/归档 predecessor 前，才必须先置顶 successor，并用 fresh `list_threads` 独立确认精确 task ID 位于 `pinnedThreads`；`pinned: true` 只表示操作已受理。失败则记录 `pin_verification_failed`，不接受接管，并按安全边界的同项目单 replacement 流程处理。旧对话不会删除，不得重复 Chief、改变范围、恢复暂停或绕过审批。
 
 ### 当前限制
 
@@ -323,14 +324,14 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 ### What it does
 
-Chief of Staff gives each Codex project a single user-facing control point. The main task is named dynamically as `Chief of <project name>`, for example `Chief of Personal Web`, then a pin is attempted and independently checked in a fresh `pinnedThreads` listing. You talk to that main task; it decomposes the objective, creates durable tasks when separate long-lived context is useful, collects structured handoffs, and consolidates the final report.
+Chief of Staff gives each Codex project a single user-facing control point. The main task is named dynamically as `Chief of <project name>`, for example `Chief of Personal Web`. An ordinary Chief starts unpinned; only central roles and operator-approved optional slots enter the pin workflow. You talk to that main task; it decomposes the objective, creates durable tasks when separate long-lived context is useful, collects structured handoffs, and consolidates the final report.
 
 Each durable task can use installed Skills automatically and can summon temporary subagents for bounded research, review, testing, or discussion.
 
 ### Key features
 
 - A distinguishable main task name for every project: `Chief of <project name>`.
-- The current Chief and every verified successor must remain pinned. An operation receipt is not evidence; success or authority transfer requires the exact task ID in a fresh `pinnedThreads` listing.
+- Ordinary Chiefs default to unpinned. Only the four central roles and operator-approved optional product Chief slots require pins and controlled inheritance. An operation receipt is not evidence; an eligible lineage needs the exact task ID in a fresh `pinnedThreads` listing before authority transfer.
 - `exception_only` review by default: the Chief accepts routine milestone and role-final handoffs, while enumerated exceptions and final project completion go to the operator; simultaneous updates are collected in a batch.
 - Mandatory user confirmation of the final goal, deliverables, and acceptance criteria before implementation.
 - Mandatory post-confirmation classification: deliverable projects must pass a four-lane, depth-2 Product Manager discovery gate before production roles are created or started. Pure synchronization/push, meeting-summary, filing/process, or read-only aggregation work may be exempt with a recorded reason and must be reclassified if scope expands.
@@ -430,7 +431,7 @@ When no project name is supplied, the initializer uses the project root director
 {
   "project_name": "Personal Web",
   "primary_task_title": "Chief of Personal Web",
-  "pin_primary_task": true,
+  "pin_primary_task": false,
   "report_review_mode": "exception_only",
   "report_approval_required": false,
   "governance_model": "standard",
@@ -477,7 +478,7 @@ At initialization, `.chief-of-staff/product-discovery.json` is `pending/unclassi
 
 A deliverable project uses `deliverable_project`, appoints the Product Manager, and can reach `gate_status: passed` only after all four evidence lanes are complete.
 
-The Skill reads `primary_task_title` and renames the current main task to that exact value. Every Chief sets `pin_primary_task` to `true` and remains pinned while authoritative. A successful pin API response is not enough: `list_threads` must show the exact task ID in `pinnedThreads` before success is reported. If that independent check fails, record `pin_verification_failed`; at a safe handoff boundary archive the old Chief with reason `unable_to_pin`, then create exactly one successor in the same saved project and existing work state with the goal, phase, pending approvals/TODOs, write ownership, evidence, and pause state transferred, and verify its exact ID. The original remains recoverable; no duplicate control plane, scope/pause change, or approval bypass is allowed.
+The Skill reads `primary_task_title` and renames the current main task to that exact value. Ordinary Chiefs default to unpinned (`pin_primary_task=false`), and that is not a defect. Only the general office, TODO, Creative Director, and context migration monitor are mandatory pins. An optional product Chief requires a general-office pack of at most three candidates, read-only TODO checks of identity, currentness, duplication, evidence freshness, capacity, and lineage, then the operator's explicit appointment and pin approval. The default optional limit is six; manual non-Chief pins are protected, and full capacity yields only a paired replacement recommendation. Pin approval does not confirm the goal or authorize engineering, design, or production; the Product Manager and four-lane discovery gate remains mandatory. Only a mandatory or approved lineage may create one replacement after safe handoff and `MIGRATION_READY`; a `pinned:true` receipt is not proof, and a fresh exact-ID `list_threads` check is required before takeover and predecessor archival.
 
 The initializer also creates:
 
@@ -492,6 +493,7 @@ AGENTS.md
     └── arbiter.toml
 .chief-of-staff/
 ├── project.json
+├── pin-state.json
 ├── project-plan.json
 ├── product-discovery.json
 ├── task-registry.json
@@ -593,7 +595,7 @@ Every unfinished-project report includes the final goal, current phase, verified
 
 The repository also includes `context-handoff`. It uses only newest input tokens divided by the model context window: checkpoint at 75%, create `Original title｜Continuation N` at a safe boundary at 85%, and prioritize migration at 95%. Cumulative and account usage are ignored.
 
-Project bundles live in `.codex/context-migrations/`; projectless bundles live in `~/.codex/context-migrations/`. A successor must return `MIGRATION_READY` and match goals, approvals, task graph, write ownership, Git state, evidence, next action, pause state, and global instructions. After parity but before takeover, authoritative-entry switching, or predecessor archival, pin the successor and independently use `list_threads` to require its exact task ID in `pinnedThreads`; `pinned: true` is only an operation receipt. A failed check records `pin_verification_failed`, denies takeover, and uses the safe-boundary same-project single-replacement path. Predecessors remain recoverable; migration cannot create duplicate Chiefs, change scope or pause state, or bypass approval. Native compaction cancels stale triggers; unproven dirty-worktree continuity requires a user decision.
+Project bundles live in `.codex/context-migrations/`; projectless bundles live in `~/.codex/context-migrations/`. A successor must return `MIGRATION_READY` and match goals, approvals, task graph, write ownership, Git state, evidence, next action, pause state, and global instructions. An ordinary unapproved Chief does not inherit a pin and never enters replacement merely because it is unpinned. For a mandatory or operator-approved optional lineage, after parity but before takeover, authoritative-entry switching, or predecessor archival, pin the successor and independently use fresh `list_threads` results to require its exact task ID in `pinnedThreads`; `pinned: true` is only an operation receipt. A failed check records `pin_verification_failed`, denies takeover, and uses the safe-boundary same-project single-replacement path. Predecessors remain recoverable; migration cannot create duplicate Chiefs, change scope or pause state, or bypass approval.
 
 ### Current limits
 

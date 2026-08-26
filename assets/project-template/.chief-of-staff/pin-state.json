@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "role_class": "ordinary_chief",
+  "authorization_status": "not_requested",
+  "operator_approval_ref": null,
+  "recommendation_ref": null,
+  "pin_status": "unpinned",
+  "verified_thread_id": null,
+  "verified_at": null,
+  "successor_inheritance_eligible": false,
+  "capacity_status": "not_checked",
+  "exclusion_reasons": [],
+  "successor": {
+    "candidate_thread_id": null,
+    "migration_ready": false,
+    "exact_list_verified": false,
+    "takeover_accepted": false,
+    "predecessor_archived": false,
+    "replacement_count": 0,
+    "same_lineage": false,
+    "safe_handoff": false
+  }
+}

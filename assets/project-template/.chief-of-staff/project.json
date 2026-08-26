@@ -2,7 +2,7 @@
   "schema_version": 1,
   "project_name": "{{PROJECT_NAME_JSON}}",
   "primary_task_title": "Chief of {{PROJECT_NAME_JSON}}",
-  "pin_primary_task": true,
+  "pin_primary_task": false,
   "report_review_mode": "exception_only",
   "report_approval_required": false,
   "governance_model": "standard",

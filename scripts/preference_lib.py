@@ -21,6 +21,17 @@ MANAGED_START = "<!-- chief-of-staff-preferences:start -->"
 MANAGED_END = "<!-- chief-of-staff-preferences:end -->"
 CLIP_KINDS = {"written", "spoken"}
 TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+PIN_CORE_ROLES = {
+    "general_office", "todo", "creative_director", "context_migration_monitor",
+}
+PIN_CRITERIA = [
+    "user_delivery_value", "imminent_material_decision", "delay_cost",
+    "cross_project_dependency", "activity", "evidence_confidence", "sidebar_cost",
+]
+PIN_DEFAULT_EXCLUSIONS = [
+    "paused", "completed", "superseded", "migration_cancelled", "routine_push",
+    "meeting_summary", "report_only", "process_only",
+]
 
 
 class PreferenceError(ValueError):
@@ -62,6 +73,145 @@ def _require_bool(section: dict[str, Any], key: str, label: str, errors: list[st
         errors.append(f"{label}.{key} must be a boolean")
 
 
+def _unique_string_list(value: object, label: str, errors: list[str]) -> list[str]:
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item for item in value
+    ):
+        errors.append(f"{label} must be an array of non-empty strings")
+        return []
+    if len(value) != len(set(value)):
+        errors.append(f"{label} must not contain duplicates")
+    return value
+
+
+def _validate_pin_governance(profile: dict[str, Any], errors: list[str]) -> None:
+    pin = _require_object(profile, "pin_governance", errors)
+    _require_bool(pin, "enabled", "pin_governance", errors)
+
+    roles = pin.get("mandatory_core_roles")
+    if not isinstance(roles, list):
+        errors.append("pin_governance.mandatory_core_roles must be an array")
+        roles = []
+    seen_roles: set[str] = set()
+    core_thread_ids: list[str] = []
+    for index, item in enumerate(roles):
+        label = f"pin_governance.mandatory_core_roles[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{label} must be an object")
+            continue
+        role = item.get("role")
+        if role not in PIN_CORE_ROLES:
+            errors.append(f"{label}.role is invalid")
+        elif role in seen_roles:
+            errors.append(f"{label}.role is duplicated")
+        else:
+            seen_roles.add(role)
+        if not isinstance(item.get("title"), str) or not item.get("title"):
+            errors.append(f"{label}.title must be a non-empty string")
+        thread_id = item.get("thread_id")
+        if thread_id is not None and (not isinstance(thread_id, str) or not thread_id):
+            errors.append(f"{label}.thread_id must be a non-empty string or null")
+        if isinstance(thread_id, str) and thread_id:
+            core_thread_ids.append(thread_id)
+    if len(roles) != 4 or seen_roles != PIN_CORE_ROLES:
+        errors.append("pin_governance.mandatory_core_roles requires each core role exactly once")
+    if len(core_thread_ids) != len(set(core_thread_ids)):
+        errors.append("pin_governance mandatory core thread IDs must be unique")
+    if pin.get("enabled") is True:
+        if profile.get("scope") != "global":
+            errors.append("enabled pin_governance requires global scope")
+        if len(core_thread_ids) != 4:
+            errors.append("enabled pin_governance requires a thread_id for every core role")
+
+    slots = pin.get("optional_chief_slots")
+    if not isinstance(slots, dict):
+        errors.append("pin_governance.optional_chief_slots must be an object")
+        slots = {}
+    limit = slots.get("limit")
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        errors.append("pin_governance.optional_chief_slots.limit must be positive")
+    if slots.get("default_pin_primary_task") is not False:
+        errors.append("pin_governance.optional_chief_slots.default_pin_primary_task must be false")
+    if slots.get("change_mode") != "recommend_then_operator_approve":
+        errors.append("pin_governance.optional_chief_slots.change_mode is invalid")
+    if slots.get("protect_manual_non_chief_pins") is not True:
+        errors.append("pin_governance.optional_chief_slots.protect_manual_non_chief_pins must be true")
+    if slots.get("capacity_policy") != "observed_capacity_then_paired_replacement":
+        errors.append("pin_governance.optional_chief_slots.capacity_policy is invalid")
+
+    recommendation = pin.get("recommendation_policy")
+    if not isinstance(recommendation, dict):
+        errors.append("pin_governance.recommendation_policy must be an object")
+        recommendation = {}
+    if recommendation.get("owner") != "general_office":
+        errors.append("pin_governance.recommendation_policy.owner must be general_office")
+    if recommendation.get("verifier") != "todo_read_only":
+        errors.append("pin_governance.recommendation_policy.verifier must be todo_read_only")
+    if recommendation.get("max_candidates") != 3:
+        errors.append("pin_governance.recommendation_policy.max_candidates must be 3")
+    if recommendation.get("max_pending_packs") != 1:
+        errors.append("pin_governance.recommendation_policy.max_pending_packs must be 1")
+    if recommendation.get("criteria") != PIN_CRITERIA:
+        errors.append("pin_governance.recommendation_policy.criteria is invalid")
+    if recommendation.get("default_exclusions") != PIN_DEFAULT_EXCLUSIONS:
+        errors.append("pin_governance.recommendation_policy.default_exclusions is invalid")
+
+    successor = pin.get("successor_inheritance")
+    if not isinstance(successor, dict):
+        errors.append("pin_governance.successor_inheritance must be an object")
+        successor = {}
+    for key in (
+        "enabled", "exact_list_verification_required", "pin_before_takeover",
+        "receipt_is_not_proof",
+    ):
+        if successor.get(key) is not True:
+            errors.append(f"pin_governance.successor_inheritance.{key} must be true")
+    if successor.get("replacement_policy") != "single_same_lineage_after_safe_handoff":
+        errors.append("pin_governance.successor_inheritance.replacement_policy is invalid")
+
+    grandfathered = pin.get("grandfathered_optional_chiefs")
+    if not isinstance(grandfathered, list):
+        errors.append("pin_governance.grandfathered_optional_chiefs must be an array")
+        grandfathered = []
+    grandfathered_ids: list[str] = []
+    grandfathered_titles: list[str] = []
+    for index, item in enumerate(grandfathered):
+        label = f"pin_governance.grandfathered_optional_chiefs[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{label} must be an object")
+            continue
+        title = item.get("title")
+        thread_id = item.get("thread_id")
+        if not isinstance(title, str) or not title:
+            errors.append(f"{label}.title must be a non-empty string")
+        else:
+            grandfathered_titles.append(title)
+        if not isinstance(thread_id, str) or not thread_id:
+            errors.append(f"{label}.thread_id must be a non-empty string")
+        else:
+            grandfathered_ids.append(thread_id)
+    if len(grandfathered_ids) != len(set(grandfathered_ids)):
+        errors.append("pin_governance grandfathered thread IDs must be unique")
+    if len(grandfathered_titles) != len(set(grandfathered_titles)):
+        errors.append("pin_governance grandfathered titles must be unique")
+
+    protected = _unique_string_list(
+        pin.get("protected_manual_thread_ids"),
+        "pin_governance.protected_manual_thread_ids", errors,
+    )
+    invalid = _unique_string_list(
+        pin.get("invalid_successor_thread_ids"),
+        "pin_governance.invalid_successor_thread_ids", errors,
+    )
+    eligible_ids = set(core_thread_ids) | set(grandfathered_ids)
+    if eligible_ids.intersection(protected):
+        errors.append("protected manual pins cannot duplicate Chief lineage IDs")
+    if eligible_ids.intersection(invalid):
+        errors.append("invalid successor IDs cannot duplicate eligible Chief lineage IDs")
+    if set(protected).intersection(invalid):
+        errors.append("protected manual pins cannot also be invalid successors")
+
+
 def validate_preferences(profile: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if profile.get("schema_version") != 1:
@@ -74,6 +224,8 @@ def validate_preferences(profile: dict[str, Any]) -> list[str]:
         "all_reports", "exception_only"
     }:
         errors.append("report_review_mode must be all_reports or exception_only")
+
+    _validate_pin_governance(profile, errors)
 
     governance = _require_object(profile, "governance_model", errors)
     _require_bool(governance, "enabled", "governance_model", errors)
@@ -213,6 +365,182 @@ def require_valid(profile: dict[str, Any]) -> None:
         raise PreferenceError("; ".join(errors))
 
 
+def _pin_signal_score(signals: object, label: str) -> float:
+    if not isinstance(signals, dict) or set(signals) != set(PIN_CRITERIA):
+        raise PreferenceError(f"{label}.signals must contain every recommendation criterion")
+    for key, value in signals.items():
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not 0 <= value <= 1
+        ):
+            raise PreferenceError(f"{label}.signals.{key} must be from 0 through 1")
+    benefit = sum(float(signals[key]) for key in PIN_CRITERIA if key != "sidebar_cost")
+    return benefit - float(signals["sidebar_cost"])
+
+
+def recommend_optional_chief_pins(
+    profile: dict[str, Any], snapshot: dict[str, Any]
+) -> dict[str, Any]:
+    """Return a read-only recommendation packet; never pin, unpin, or create a task."""
+    require_valid(profile)
+    pin = profile["pin_governance"]
+    if pin["enabled"] is not True:
+        return {
+            "status": "disabled",
+            "candidates": [],
+            "paired_replacement": None,
+            "operator_approval_required": True,
+            "mutation_performed": False,
+        }
+    if not isinstance(snapshot, dict):
+        raise PreferenceError("pin snapshot must be an object")
+    observed_capacity = snapshot.get("observed_capacity")
+    if (
+        not isinstance(observed_capacity, int)
+        or isinstance(observed_capacity, bool)
+        or observed_capacity < 1
+    ):
+        raise PreferenceError("pin snapshot observed_capacity must be positive")
+    pending_packs = snapshot.get("pending_packs")
+    if (
+        not isinstance(pending_packs, int)
+        or isinstance(pending_packs, bool)
+        or pending_packs < 0
+        or pending_packs > 1
+    ):
+        raise PreferenceError("pin snapshot pending_packs must be 0 or 1")
+    candidates = snapshot.get("candidates")
+    pinned = snapshot.get("pinned_threads")
+    if not isinstance(candidates, list) or not isinstance(pinned, list):
+        raise PreferenceError("pin snapshot candidates and pinned_threads must be arrays")
+
+    protected_ids = set(pin["protected_manual_thread_ids"])
+    invalid_successor_ids = set(pin["invalid_successor_thread_ids"])
+    core_ids = {
+        item["thread_id"] for item in pin["mandatory_core_roles"] if item["thread_id"]
+    }
+    pinned_ids: set[str] = set()
+    replaceable: list[dict[str, Any]] = []
+    optional_pinned = 0
+    for index, item in enumerate(pinned):
+        label = f"pin snapshot pinned_threads[{index}]"
+        if not isinstance(item, dict):
+            raise PreferenceError(f"{label} must be an object")
+        thread_id = item.get("thread_id")
+        pin_class = item.get("pin_class")
+        if not isinstance(thread_id, str) or not thread_id:
+            raise PreferenceError(f"{label}.thread_id must be a non-empty string")
+        if thread_id in pinned_ids:
+            raise PreferenceError("pin snapshot pinned thread IDs must be unique")
+        pinned_ids.add(thread_id)
+        if pin_class not in {
+            "mandatory_core", "approved_optional", "grandfathered_optional",
+            "manual_non_chief",
+        }:
+            raise PreferenceError(f"{label}.pin_class is invalid")
+        if pin_class in {"approved_optional", "grandfathered_optional"}:
+            optional_pinned += 1
+            score = _pin_signal_score(item.get("signals"), label)
+            if thread_id not in protected_ids and thread_id not in core_ids:
+                replaceable.append(
+                    {"thread_id": thread_id, "title": item.get("title"), "score": score}
+                )
+        if pin_class == "manual_non_chief":
+            protected_ids.add(thread_id)
+
+    excluded: list[dict[str, str]] = []
+    eligible: list[dict[str, Any]] = []
+    candidate_id_counts: dict[str, int] = {}
+    for item in candidates:
+        if isinstance(item, dict) and isinstance(item.get("thread_id"), str):
+            thread_id = item["thread_id"]
+            candidate_id_counts[thread_id] = candidate_id_counts.get(thread_id, 0) + 1
+    for index, item in enumerate(candidates):
+        label = f"pin snapshot candidates[{index}]"
+        if not isinstance(item, dict):
+            raise PreferenceError(f"{label} must be an object")
+        thread_id = item.get("thread_id")
+        title = item.get("title")
+        lifecycle_status = item.get("lifecycle_status")
+        work_kind = item.get("work_kind")
+        if not isinstance(thread_id, str) or not thread_id:
+            raise PreferenceError(f"{label}.thread_id must be a non-empty string")
+        if not isinstance(title, str) or not title:
+            raise PreferenceError(f"{label}.title must be a non-empty string")
+        reasons: list[str] = []
+        if candidate_id_counts.get(thread_id, 0) > 1 or thread_id in pinned_ids:
+            reasons.append("duplication")
+        if thread_id in invalid_successor_ids:
+            reasons.append("invalid_lineage")
+        if lifecycle_status in {"paused", "completed", "superseded", "migration_cancelled"}:
+            reasons.append(lifecycle_status)
+        elif lifecycle_status != "active":
+            raise PreferenceError(f"{label}.lifecycle_status is invalid")
+        if work_kind in {"routine_push", "meeting_summary", "report_only", "process_only"}:
+            reasons.append(work_kind)
+        elif work_kind != "product_delivery":
+            raise PreferenceError(f"{label}.work_kind is invalid")
+        for key, reason in (
+            ("current", "not_current"),
+            ("evidence_fresh", "stale_evidence"),
+            ("lineage_valid", "invalid_lineage"),
+        ):
+            if not isinstance(item.get(key), bool):
+                raise PreferenceError(f"{label}.{key} must be a boolean")
+            if item[key] is False:
+                reasons.append(reason)
+        score = _pin_signal_score(item.get("signals"), label)
+        if reasons:
+            excluded.append({"thread_id": thread_id, "reason": ",".join(reasons)})
+        else:
+            eligible.append({"thread_id": thread_id, "title": title, "score": score})
+
+    eligible.sort(key=lambda item: (-item["score"], item["title"], item["thread_id"]))
+    maximum = pin["recommendation_policy"]["max_candidates"]
+    recommended = eligible[:maximum]
+    base = {
+        "candidates": recommended,
+        "excluded": excluded,
+        "paired_replacement": None,
+        "protected_manual_thread_ids": sorted(protected_ids),
+        "todo_checks": [
+            "identity", "currentness", "duplication", "evidence_freshness",
+            "capacity", "lineage",
+        ],
+        "operator_approval_required": True,
+        "mutation_performed": False,
+    }
+    if pending_packs == 1:
+        return {"status": "pending_pack_exists", **base, "candidates": []}
+    if not recommended:
+        return {"status": "no_eligible_candidate", **base}
+
+    optional_limit = pin["optional_chief_slots"]["limit"]
+    has_capacity = len(pinned_ids) < observed_capacity and optional_pinned < optional_limit
+    if has_capacity:
+        available = min(
+            observed_capacity - len(pinned_ids),
+            optional_limit - optional_pinned,
+            maximum,
+        )
+        return {"status": "recommendation_ready", **base, "candidates": recommended[:available]}
+
+    replaceable.sort(key=lambda item: (item["score"], item.get("title") or "", item["thread_id"]))
+    if replaceable:
+        return {
+            "status": "paired_replacement_recommendation",
+            **base,
+            "candidates": recommended[:1],
+            "paired_replacement": {
+                "add_thread_id": recommended[0]["thread_id"],
+                "remove_thread_id": replaceable[0]["thread_id"],
+                "automatic_eviction": False,
+            },
+        }
+    return {"status": "capacity_full_no_safe_replacement", **base, "candidates": []}
+
+
 def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink() or path.parent.is_symlink():
@@ -243,6 +571,8 @@ def managed_agents_block(profile_path: Path, renderer_path: Path) -> str:
 - If `operator_salutation.enabled` is true, use its configured value unless the operator explicitly overrides it in the current conversation.
 - Apply `report_review_mode`. In `exception_only`, the project Chief reviews routine child progress and final handoffs against their contracts without asking the operator. Escalate only goal confirmation, material product choices, visual choices through the Creative Director, protected actions, safety/security, ownership or scope conflicts, failed or unverifiable work, depth expansion, and final project completion.
 - If `governance_model.enabled` is true, treat the operator as chair: project Chiefs own routine administration, auditors have evidence-only authority, roles follow the registered chain of command, and an unresolved decision freezes only its affected write surface. Route non-visual statutory exceptions only to the configured general-office task as `CHAIR_BRIEF_READY`; only that task may emit the operator-facing `USER_ACTION_REQUIRED`. TODO scans only the general office and Creative Director.
+- Apply `pin_governance` narrowly. Ordinary Chiefs default unpinned, and their unpinned state is not a failure. Mandatory pins are limited to the configured general office, TODO, Creative Director, context migration monitor, and their valid successors. An optional product Chief may be pinned, created for pinning, unpinned, or replaced only after a general-office recommendation and the operator's explicit approval; pin approval never confirms the project goal or authorizes engineering, design, production, or bypass of the Product Manager discovery gate.
+- The general office recommends at most three candidates in one pending pack. TODO is read-only and checks identity, currentness, duplication, evidence freshness, observed capacity, and lineage. Preserve manual non-Chief pins. At full capacity, produce only a paired replacement recommendation; never evict automatically. Exclude paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs by default. A `pinned: true` receipt is not proof; fresh `list_threads` exact-ID presence is required. Only mandatory or operator-approved lineages may use the safe-handoff single-replacement successor path.
 - If `governance_model.continuation_policy.enabled` is true, every project Chief must select and execute the strongest evidence-backed safe in-scope continuation without asking the operator. Do not present stopping, preserving a failed state, or delaying as peer options while a safe continuation exists; the operator will initiate those choices when wanted. Escalate only when continuing itself requires a new permission or creation of a new Chief. An ordinary failure remains Chief-owned while another bounded safe diagnostic, repair, or verification path exists. This policy does not authorize protected actions, bypass the Creative Director visual gate, or conceal safety/security evidence; those constraints determine whether a path is safe and already authorized.
 - If `visual_selection_gate.enabled` is true, require clickable non-final previews and the operator's explicit selection before final visual implementation. Route every visual packet only to the configured `Chief of Creative Direction｜创意总监` task; do not duplicate it to the general Chief task, project tasks, roles, or TODO. If unanswered, only that Creative Director task remains the authoritative waiting item for the TODO scanner.
 - If `american_english_coaching.enabled` is true, append its configured written, spoken, and idiom sections. Include casual conversation only when `include_casual_chat` is true.

@@ -52,6 +52,26 @@ python3 scripts/configure_preferences.py \
 
 ## Schema and behavior
 
+- `pin_governance`: global policy for scarce Chief pin slots. Its enabled form
+  registers exactly one `general_office`, `todo`, `creative_director`, and
+  `context_migration_monitor`, each with a non-empty exact thread ID. Public
+  presets are disabled and use generic titles with `thread_id: null`.
+- `pin_governance.optional_chief_slots`: defaults to limit `6`, ordinary
+  `default_pin_primary_task: false`, `recommend_then_operator_approve`, manual
+  non-Chief pin protection, and `observed_capacity_then_paired_replacement`.
+- `pin_governance.recommendation_policy`: the general office may form at most
+  one pending pack with three candidates. TODO is a read-only verifier of
+  identity, currentness, duplication, evidence freshness, capacity, and lineage.
+  Paused/completed/superseded/migration-cancelled and routine push, meeting,
+  report-only, or process-only Chiefs are excluded by default.
+- `pin_governance.successor_inheritance`: requires an exact fresh
+  `pinnedThreads` check before takeover; a `pinned:true` receipt is not proof.
+  Only mandatory or explicitly approved lineages can create one same-lineage
+  replacement after a safe `MIGRATION_READY` handoff.
+- `grandfathered_optional_chiefs`, `protected_manual_thread_ids`, and
+  `invalid_successor_thread_ids` are private live-state lists. Public examples
+  keep them empty and never publish real task IDs.
+
 - `report_review_mode`: `exception_only` lets the project Chief review routine
   child handoffs and escalates only enumerated exceptions plus final project
   completion. `all_reports` restores operator review for every milestone/final

@@ -22,6 +22,7 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_ROOT = SKILL_ROOT / "assets" / "project-template"
 MUTABLE_STATE = {
     Path(".chief-of-staff/project-plan.json"),
+    Path(".chief-of-staff/pin-state.json"),
     Path(".chief-of-staff/product-discovery.json"),
     Path(".chief-of-staff/task-registry.json"),
     Path(".chief-of-staff/approval-queue.json"),
@@ -315,6 +316,19 @@ def legacy_product_discovery(
     return encoded_json(state)
 
 
+def grandfathered_pin_state(rendered_template: bytes) -> bytes:
+    state = json.loads(rendered_template.decode("utf-8"))
+    state.update(
+        {
+            "role_class": "grandfathered_optional_chief",
+            "authorization_status": "grandfathered_pending_review",
+            "pin_status": "grandfathered_preserved",
+            "successor_inheritance_eligible": False,
+        }
+    )
+    return encoded_json(state)
+
+
 def validate_state(relative: Path, value: object, errors: list[str]) -> None:
     if not isinstance(value, dict):
         errors.append(f"top-level JSON value in {relative} must be an object")
@@ -380,8 +394,6 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
         ):
             if key in value and not isinstance(value[key], bool):
                 errors.append(f"{key} in {relative} must be a boolean")
-        if value.get("pin_primary_task") is not True:
-            errors.append(f"pin_primary_task in {relative} must be true")
         allowlist_digest = value.get("legacy_allowlist_digest")
         if allowlist_digest is not None and (
             not isinstance(allowlist_digest, str)
@@ -643,6 +655,160 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                 errors.append(
                     f"completed project in {relative} requires verified acceptance evidence"
                 )
+
+    elif relative.name == "pin-state.json":
+        require_keys(
+            value,
+            {
+                "schema_version", "role_class", "authorization_status",
+                "operator_approval_ref", "recommendation_ref", "pin_status",
+                "verified_thread_id", "verified_at",
+                "successor_inheritance_eligible", "capacity_status",
+                "exclusion_reasons", "successor",
+            },
+            relative,
+            errors,
+        )
+        role_class = value.get("role_class")
+        authorization_status = value.get("authorization_status")
+        pin_status = value.get("pin_status")
+        if role_class not in {
+            "ordinary_chief", "mandatory_core", "approved_optional_chief",
+            "grandfathered_optional_chief",
+        }:
+            errors.append(f"role_class in {relative} is invalid")
+        if authorization_status not in {
+            "not_required", "not_requested", "pending", "approved",
+            "grandfathered_pending_review", "revoked",
+        }:
+            errors.append(f"authorization_status in {relative} is invalid")
+        if pin_status not in {
+            "unpinned", "pending_verification", "verified", "verification_failed",
+            "capacity_waiting", "grandfathered_preserved", "superseded",
+        }:
+            errors.append(f"pin_status in {relative} is invalid")
+        for key in (
+            "operator_approval_ref", "recommendation_ref", "verified_thread_id",
+            "verified_at",
+        ):
+            if value.get(key) is not None and not isinstance(value.get(key), str):
+                errors.append(f"{key} in {relative} must be a string or null")
+        if not isinstance(value.get("successor_inheritance_eligible"), bool):
+            errors.append(f"successor_inheritance_eligible in {relative} must be boolean")
+        if value.get("capacity_status") not in {"not_checked", "available", "full"}:
+            errors.append(f"capacity_status in {relative} is invalid")
+        exclusions = value.get("exclusion_reasons")
+        if not isinstance(exclusions, list) or not all(
+            isinstance(item, str) and item for item in exclusions
+        ):
+            errors.append(f"exclusion_reasons in {relative} must be non-empty strings")
+        elif len(exclusions) != len(set(exclusions)):
+            errors.append(f"exclusion_reasons in {relative} must not contain duplicates")
+
+        successor = value.get("successor")
+        if not isinstance(successor, dict):
+            errors.append(f"successor in {relative} must be an object")
+            successor = {}
+        require_keys(
+            successor,
+            {
+                "candidate_thread_id", "migration_ready", "exact_list_verified",
+                "takeover_accepted", "predecessor_archived", "replacement_count",
+                "same_lineage", "safe_handoff",
+            },
+            Path(f"{relative} successor"),
+            errors,
+        )
+        if successor.get("candidate_thread_id") is not None and not isinstance(
+            successor.get("candidate_thread_id"), str
+        ):
+            errors.append(f"successor.candidate_thread_id in {relative} must be string or null")
+        for key in (
+            "migration_ready", "exact_list_verified", "takeover_accepted",
+            "predecessor_archived", "same_lineage", "safe_handoff",
+        ):
+            if not isinstance(successor.get(key), bool):
+                errors.append(f"successor.{key} in {relative} must be boolean")
+        replacement_count = successor.get("replacement_count")
+        if (
+            not isinstance(replacement_count, int)
+            or isinstance(replacement_count, bool)
+            or replacement_count not in {0, 1}
+        ):
+            errors.append(f"successor.replacement_count in {relative} must be 0 or 1")
+
+        eligible = value.get("successor_inheritance_eligible") is True
+        if role_class == "ordinary_chief":
+            if authorization_status not in {"not_requested", "pending", "revoked"}:
+                errors.append(f"ordinary_chief in {relative} cannot be pin-approved")
+            if pin_status not in {"unpinned", "capacity_waiting", "superseded"}:
+                errors.append(f"ordinary_chief in {relative} must remain unpinned")
+            if eligible:
+                errors.append(f"ordinary_chief in {relative} cannot inherit a pin")
+        if role_class == "mandatory_core":
+            if authorization_status != "not_required" or not eligible:
+                errors.append(f"mandatory_core in {relative} requires inherited pin eligibility")
+            if pin_status not in {
+                "pending_verification", "verified", "verification_failed", "capacity_waiting",
+            }:
+                errors.append(f"mandatory_core in {relative} requires an active pin workflow")
+        if role_class == "approved_optional_chief":
+            if (
+                authorization_status != "approved"
+                or not value.get("operator_approval_ref")
+                or not value.get("recommendation_ref")
+                or not eligible
+            ):
+                errors.append(f"approved_optional_chief in {relative} requires recommendation and operator approval")
+            if pin_status not in {
+                "pending_verification", "verified", "verification_failed", "capacity_waiting",
+            }:
+                errors.append(f"approved_optional_chief in {relative} requires an approved pin workflow")
+        if role_class == "grandfathered_optional_chief":
+            if authorization_status != "grandfathered_pending_review":
+                errors.append(f"grandfathered_optional_chief in {relative} requires pending value review")
+            if pin_status not in {"grandfathered_preserved", "verified", "superseded"}:
+                errors.append(f"grandfathered_optional_chief in {relative} has invalid pin state")
+            if eligible:
+                errors.append(f"grandfathered_optional_chief in {relative} cannot create a replacement before approval")
+        if authorization_status == "pending" and not value.get("recommendation_ref"):
+            errors.append(f"pending pin authorization in {relative} requires recommendation_ref")
+        if pin_status == "verified":
+            if not value.get("verified_thread_id") or not value.get("verified_at"):
+                errors.append(f"verified pin in {relative} requires exact thread ID and verification time")
+        elif value.get("verified_thread_id") is not None or value.get("verified_at") is not None:
+            errors.append(f"unverified pin in {relative} cannot retain verified thread evidence")
+        if pin_status == "verification_failed" and not eligible:
+            errors.append(f"pin verification failure in {relative} is valid only for mandatory or approved lineage")
+
+        progressed = any(
+            successor.get(key) is True
+            for key in (
+                "migration_ready", "exact_list_verified", "takeover_accepted",
+                "predecessor_archived", "same_lineage", "safe_handoff",
+            )
+        ) or replacement_count == 1 or successor.get("candidate_thread_id") is not None
+        if progressed and not eligible:
+            errors.append(f"successor flow in {relative} requires mandatory or approved lineage")
+        if successor.get("exact_list_verified") is True and not successor.get("migration_ready"):
+            errors.append(f"successor exact-list verification in {relative} requires MIGRATION_READY")
+        if successor.get("takeover_accepted") is True and not (
+            successor.get("migration_ready") is True
+            and successor.get("exact_list_verified") is True
+            and successor.get("same_lineage") is True
+            and pin_status == "verified"
+            and successor.get("candidate_thread_id") == value.get("verified_thread_id")
+        ):
+            errors.append(f"successor takeover in {relative} requires same-lineage exact-ID pin verification")
+        if successor.get("predecessor_archived") is True and not successor.get("takeover_accepted"):
+            errors.append(f"predecessor archival in {relative} requires verified successor takeover")
+        if replacement_count == 1 and not (
+            eligible
+            and successor.get("migration_ready") is True
+            and successor.get("same_lineage") is True
+            and successor.get("safe_handoff") is True
+        ):
+            errors.append(f"replacement in {relative} requires one safe same-lineage handoff")
 
     elif relative.name == "product-discovery.json":
         require_keys(
@@ -1214,6 +1380,7 @@ def validate(target: Path) -> list[str]:
 
     for relative in (
         Path(".chief-of-staff/project.json"),
+        Path(".chief-of-staff/pin-state.json"),
         Path(".chief-of-staff/product-discovery.json"),
         Path(".chief-of-staff/project-plan.json"),
         Path(".chief-of-staff/task-registry.json"),
@@ -1233,6 +1400,21 @@ def validate(target: Path) -> list[str]:
     discovery_path = target / ".chief-of-staff" / "product-discovery.json"
     plan_path = target / ".chief-of-staff" / "project-plan.json"
     registry_path = target / ".chief-of-staff" / "task-registry.json"
+    pin_state_path = target / ".chief-of-staff" / "pin-state.json"
+    if project_path.is_file() and pin_state_path.is_file():
+        try:
+            project = json.loads(project_path.read_text(encoding="utf-8"))
+            pin_state = json.loads(pin_state_path.read_text(encoding="utf-8"))
+            pin_primary = project.get("pin_primary_task")
+            role_class = pin_state.get("role_class")
+            if role_class == "ordinary_chief" and pin_primary is not False:
+                errors.append("ordinary Chief requires pin_primary_task=false")
+            if role_class in {"mandatory_core", "approved_optional_chief"} and pin_primary is not True:
+                errors.append("mandatory or approved optional Chief requires pin_primary_task=true")
+            if role_class == "grandfathered_optional_chief" and pin_primary is not True:
+                errors.append("grandfathered optional Chief preserves pin_primary_task=true pending review")
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            pass
     if all(path.is_file() for path in (project_path, discovery_path, plan_path, registry_path)):
         try:
             project = json.loads(project_path.read_text(encoding="utf-8"))
@@ -1464,12 +1646,18 @@ def initialize(
 
     existing_project = read_json_object(target / ".chief-of-staff" / "project.json")
     discovery_path = target / ".chief-of-staff" / "product-discovery.json"
+    pin_state_path = target / ".chief-of-staff" / "pin-state.json"
     legacy_upgrade = bool(
         existing_project is not None
         and (
             not discovery_path.is_file()
             or any(key not in existing_project for key in PROJECT_CLASSIFICATION_POLICIES)
         )
+    )
+    legacy_pin_upgrade = bool(
+        existing_project is not None
+        and existing_project.get("pin_primary_task") is True
+        and not pin_state_path.is_file()
     )
     existing_plan = read_json_object(target / ".chief-of-staff" / "project-plan.json")
     existing_registry = read_json_object(target / ".chief-of-staff" / "task-registry.json")
@@ -1497,6 +1685,8 @@ def initialize(
                 phase_ids=legacy_phase_ids,
                 task_ids=legacy_task_ids,
             )
+        if relative == Path(".chief-of-staff/pin-state.json") and legacy_pin_upgrade:
+            expected = grandfathered_pin_state(expected)
         cursor = target
         unsafe_parent = False
         for part in relative.parts[:-1]:
@@ -1567,6 +1757,10 @@ def initialize(
                 try:
                     existing_project = json.loads(destination.read_text(encoding="utf-8"))
                     expected_project = json.loads(expected.decode("utf-8"))
+                    grandfathered_project = dict(expected_project)
+                    grandfathered_project["pin_primary_task"] = True
+                    if legacy_pin_upgrade and existing_project == grandfathered_project:
+                        continue
                     # Upgrade an older managed project by adding only missing defaults.
                     upgraded_project = dict(existing_project)
                     project_changed = False
@@ -1684,6 +1878,20 @@ def initialize(
                     previous_current.encode("utf-8"), previous_text.encode("utf-8"),
                     legacy_text.encode("utf-8"),
                 }
+                narrow_pin_lines = """- Ordinary project Chiefs default to unpinned (`pin_primary_task=false`). That state is not a defect and never authorizes creating a successor, asking the operator to pin it, or archiving its predecessor.
+- Only the central `general_office`, `todo`, `creative_director`, and `context_migration_monitor` roles require a pin. An optional product Chief may be created, pinned, unpinned, replaced, or inherit a pin only after the general office recommends it and the operator explicitly approves that exact change. Approval to appoint or pin does not confirm the project goal or authorize engineering, design, content, or production; the Product Manager discovery gate still applies.
+- Optional slots default to six and remain bounded by observed capacity. Protect every manual non-Chief pin. If capacity is full, produce only a paired replacement recommendation; never evict automatically. The general office may present at most three candidates in one pending pack, and TODO only verifies identity, currentness, duplication, evidence freshness, capacity, and lineage. Exclude paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs by default; the central context migration monitor remains a mandatory exception.
+- A successful pin API receipt is not proof. For a mandatory core role or operator-approved optional lineage, call `list_threads` and require the exact task ID in `pinnedThreads`; record a failed independent check as `pin_verification_failed`. A capacity-full result is not a task defect.
+- Only an eligible mandatory or approved lineage may use successor pin inheritance. After `MIGRATION_READY` and a safe same-lineage handoff, create at most one replacement, verify its exact ID in a fresh `pinnedThreads` result before takeover or authoritative-entry switching, and archive the predecessor only after verified takeover. Never delete a predecessor, duplicate a Chief, change scope or pause state, or bypass an approval.
+"""
+                broad_pin_lines = """- The active Chief must remain pinned. A pin operation receipt is not success evidence: call `list_threads` and require the Chief's exact task ID in `pinnedThreads`. Record an independent-check failure as `pin_verification_failed`.
+- A `MIGRATION_READY` successor may take control only after parity and an independent `list_threads` check shows its exact task ID in `pinnedThreads`, and that check must occur before takeover, authoritative-entry switching, or predecessor archival. On failure, do not accept takeover; at a safe boundary archive the old Chief with reason `unable_to_pin`, keep predecessors recoverable, create exactly one replacement in the same saved project and work state, transfer the goal, phase, pending approvals/TODOs, write ownership, evidence, and pause state, then repeat exact-ID verification. Never delete a predecessor, run duplicate Chiefs, change scope or pause state, or bypass an approval through pin inheritance.
+"""
+                old_pin_contract = current_text.replace(narrow_pin_lines, broad_pin_lines).replace(
+                    "- `.chief-of-staff/pin-state.json`: pin role classification, recommendation/approval status, capacity result, exact-ID verification evidence, and bounded successor state.\n",
+                    "",
+                )
+                compatibility_variants.add(old_pin_contract.encode("utf-8"))
                 old_audio = b"- Generate separate written and spoken audio only when `audio_playback.enabled` is true. Use only its configured storage root; unavailable audio falls back to text without writing elsewhere."
                 new_audio = b"- With `provider: host_builtin`, keep written/spoken text available to the host voice or read-aloud control and generate no files. Only opt-in `auto` or `macos_say` renders separate written/spoken attachments in the configured storage root; unavailable audio falls back to text without writing elsewhere."
                 compatibility_variants.update(

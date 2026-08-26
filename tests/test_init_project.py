@@ -396,20 +396,24 @@ class InitProjectTests(unittest.TestCase):
             self.assertIn("Product classification and discovery gate", (target / "AGENTS.md").read_text())
             self.assertEqual(run(target, "--check").returncode, 0)
 
-    def test_generated_contract_enforces_exact_id_pin_inheritance_gate(self):
+    def test_generated_contract_enforces_narrow_pin_inheritance_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
             agents = (target / "AGENTS.md").read_text()
-            self.assertIn("active Chief must remain pinned", agents)
+            self.assertIn("Ordinary project Chiefs default to unpinned", agents)
+            self.assertIn("`general_office`, `todo`, `creative_director`, and `context_migration_monitor`", agents)
+            self.assertIn("operator explicitly approves that exact change", agents)
+            self.assertIn("Protect every manual non-Chief pin", agents)
+            self.assertIn("paired replacement recommendation", agents)
+            self.assertIn("does not confirm the project goal", agents)
             self.assertIn("call `list_threads`", agents)
             self.assertIn("exact task ID in `pinnedThreads`", agents)
-            self.assertIn("A `MIGRATION_READY` successor may take control only", agents)
-            self.assertIn("before takeover, authoritative-entry switching, or predecessor archival", agents)
+            self.assertIn("After `MIGRATION_READY`", agents)
+            self.assertIn("before takeover or authoritative-entry switching", agents)
             self.assertIn("`pin_verification_failed`", agents)
-            self.assertIn("reason `unable_to_pin`", agents)
-            self.assertIn("create exactly one replacement in the same saved project and work state", agents)
-            self.assertIn("Never delete a predecessor, run duplicate Chiefs, change scope or pause state", agents)
+            self.assertIn("create at most one replacement", agents)
+            self.assertIn("Never delete a predecessor, duplicate a Chief, change scope or pause state", agents)
 
             skill = (ROOT / "SKILL.md").read_text()
             readme = (ROOT / "README.md").read_text()
@@ -419,19 +423,97 @@ class InitProjectTests(unittest.TestCase):
                 self.assertIn("list_threads", text)
                 self.assertIn("pinnedThreads", text)
                 self.assertIn("pin_verification_failed", text)
-                self.assertIn("unable_to_pin", text)
 
-    def test_active_chief_pin_cannot_be_disabled(self):
+    def test_fresh_ordinary_chief_is_unpinned_and_cannot_enter_successor_flow(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
             project = read_state(target, "project.json")
-            project["pin_primary_task"] = False
-            write_state(target, "project.json", project)
+            pin_state = read_state(target, "pin-state.json")
+            self.assertFalse(project["pin_primary_task"])
+            self.assertEqual(pin_state["role_class"], "ordinary_chief")
+            self.assertEqual(pin_state["pin_status"], "unpinned")
+            pin_state["pin_status"] = "verification_failed"
+            pin_state["successor"]["migration_ready"] = True
+            write_state(target, "pin-state.json", pin_state)
             result = run(target, "--check")
             self.assertEqual(result.returncode, 1)
-            self.assertIn("pin_primary_task", result.stderr)
-            self.assertIn("must be true", result.stderr)
+            self.assertIn("ordinary_chief", result.stderr)
+            self.assertIn("successor flow", result.stderr)
+
+    def test_approved_optional_pin_does_not_confirm_goal_or_pass_product_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            project = read_state(target, "project.json")
+            project["pin_primary_task"] = True
+            write_state(target, "project.json", project)
+            pin_state = read_state(target, "pin-state.json")
+            pin_state.update({
+                "role_class": "approved_optional_chief",
+                "authorization_status": "approved",
+                "operator_approval_ref": "approval:anonymous",
+                "recommendation_ref": "recommendation:anonymous",
+                "pin_status": "pending_verification",
+                "successor_inheritance_eligible": True,
+            })
+            write_state(target, "pin-state.json", pin_state)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            plan = read_state(target, "project-plan.json")
+            discovery = read_state(target, "product-discovery.json")
+            self.assertEqual(plan["goal_status"], "unconfirmed")
+            self.assertEqual(discovery["gate_status"], "awaiting_classification")
+
+    def test_successor_requires_migration_exact_id_and_pin_before_archive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            project = read_state(target, "project.json")
+            project["pin_primary_task"] = True
+            write_state(target, "project.json", project)
+            pin_state = read_state(target, "pin-state.json")
+            pin_state.update({
+                "role_class": "mandatory_core",
+                "authorization_status": "not_required",
+                "pin_status": "verified",
+                "verified_thread_id": "thread:successor",
+                "verified_at": "2026-08-26T00:00:00Z",
+                "successor_inheritance_eligible": True,
+            })
+            pin_state["successor"].update({
+                "candidate_thread_id": "thread:successor",
+                "migration_ready": True,
+                "exact_list_verified": True,
+                "takeover_accepted": True,
+                "predecessor_archived": True,
+                "replacement_count": 1,
+                "same_lineage": True,
+                "safe_handoff": True,
+            })
+            write_state(target, "pin-state.json", pin_state)
+            self.assertEqual(run(target, "--check").returncode, 0)
+            pin_state["successor"]["exact_list_verified"] = False
+            write_state(target, "pin-state.json", pin_state)
+            result = run(target, "--check")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("exact-ID pin verification", result.stderr)
+
+    def test_legacy_pinned_project_is_preserved_as_grandfathered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            (target / ".chief-of-staff" / "pin-state.json").unlink()
+            project = read_state(target, "project.json")
+            project["pin_primary_task"] = True
+            write_state(target, "project.json", project)
+            self.assertEqual(run(target).returncode, 0)
+            migrated = read_state(target, "pin-state.json")
+            self.assertEqual(migrated["role_class"], "grandfathered_optional_chief")
+            self.assertEqual(migrated["authorization_status"], "grandfathered_pending_review")
+            self.assertEqual(migrated["pin_status"], "grandfathered_preserved")
+            self.assertIsNone(migrated["verified_thread_id"])
+            self.assertEqual(run(target, "--check").returncode, 0)
 
     def test_status_requires_all_governance_headings(self):
         with tempfile.TemporaryDirectory() as tmp:

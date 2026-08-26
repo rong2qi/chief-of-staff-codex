@@ -7,6 +7,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.preference_lib import (
+    PIN_CRITERIA,
+    recommend_optional_chief_pins,
+    validate_preferences,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIGURE = ROOT / "scripts" / "configure_preferences.py"
@@ -23,6 +29,105 @@ def run_config(*args, env=None):
 
 
 class PreferenceTests(unittest.TestCase):
+    def enabled_pin_profile(self):
+        profile = json.loads(
+            (ROOT / "assets/operator-preferences.example.json").read_text()
+        )
+        profile["pin_governance"]["enabled"] = True
+        for index, role in enumerate(profile["pin_governance"]["mandatory_core_roles"]):
+            role["thread_id"] = f"core-{index}"
+        return profile
+
+    def pin_candidate(self, thread_id, *, status="active", work_kind="product_delivery", score=0.8):
+        return {
+            "thread_id": thread_id,
+            "title": f"Chief {thread_id}",
+            "lifecycle_status": status,
+            "work_kind": work_kind,
+            "current": True,
+            "evidence_fresh": True,
+            "lineage_valid": True,
+            "signals": {key: score for key in PIN_CRITERIA},
+        }
+
+    def test_public_pin_presets_are_safe_and_id_free(self):
+        for relative in (
+            "assets/operator-preferences.example.json",
+            "assets/presets/operator-controlled-bilingual.json",
+        ):
+            profile = json.loads((ROOT / relative).read_text())
+            self.assertEqual(validate_preferences(profile), [])
+            pin = profile["pin_governance"]
+            self.assertFalse(pin["enabled"])
+            self.assertEqual({item["role"] for item in pin["mandatory_core_roles"]}, {
+                "general_office", "todo", "creative_director", "context_migration_monitor"
+            })
+            self.assertTrue(all(item["thread_id"] is None for item in pin["mandatory_core_roles"]))
+            self.assertEqual(pin["optional_chief_slots"]["limit"], 6)
+            self.assertFalse(pin["optional_chief_slots"]["default_pin_primary_task"])
+            self.assertEqual(pin["grandfathered_optional_chiefs"], [])
+            self.assertEqual(pin["protected_manual_thread_ids"], [])
+            self.assertEqual(pin["invalid_successor_thread_ids"], [])
+
+    def test_enabled_pin_governance_requires_four_unique_exact_ids(self):
+        profile = self.enabled_pin_profile()
+        self.assertEqual(validate_preferences(profile), [])
+        profile["pin_governance"]["mandatory_core_roles"][0]["thread_id"] = None
+        self.assertTrue(any("thread_id for every core role" in item for item in validate_preferences(profile)))
+        profile = self.enabled_pin_profile()
+        profile["pin_governance"]["mandatory_core_roles"][1]["thread_id"] = "core-0"
+        self.assertTrue(any("must be unique" in item for item in validate_preferences(profile)))
+
+    def test_pin_recommendation_is_bounded_and_excludes_stale_or_process_work(self):
+        profile = self.enabled_pin_profile()
+        candidates = [self.pin_candidate(f"candidate-{index}", score=0.9 - index / 20) for index in range(5)]
+        candidates.extend([
+            self.pin_candidate("paused", status="paused"),
+            self.pin_candidate("process", work_kind="routine_push"),
+        ])
+        candidates[1]["evidence_fresh"] = False
+        result = recommend_optional_chief_pins(profile, {
+            "observed_capacity": 20,
+            "pending_packs": 0,
+            "pinned_threads": [],
+            "candidates": candidates,
+        })
+        self.assertEqual(result["status"], "recommendation_ready")
+        self.assertLessEqual(len(result["candidates"]), 3)
+        reasons = {item["thread_id"]: item["reason"] for item in result["excluded"]}
+        self.assertIn("paused", reasons["paused"])
+        self.assertIn("routine_push", reasons["process"])
+        self.assertIn("stale_evidence", reasons["candidate-1"])
+        self.assertTrue(result["operator_approval_required"])
+        self.assertFalse(result["mutation_performed"])
+
+    def test_full_capacity_protects_manual_pin_and_only_pairs_optional_replacement(self):
+        profile = self.enabled_pin_profile()
+        profile["pin_governance"]["protected_manual_thread_ids"] = ["manual"]
+        low = {key: 0.1 for key in PIN_CRITERIA}
+        pinned = [
+            {"thread_id": "manual", "title": "Manual", "pin_class": "manual_non_chief"},
+            {"thread_id": "old-optional", "title": "Old", "pin_class": "approved_optional", "signals": low},
+        ]
+        result = recommend_optional_chief_pins(profile, {
+            "observed_capacity": 2,
+            "pending_packs": 0,
+            "pinned_threads": pinned,
+            "candidates": [self.pin_candidate("new")],
+        })
+        self.assertEqual(result["status"], "paired_replacement_recommendation")
+        self.assertEqual(result["paired_replacement"]["remove_thread_id"], "old-optional")
+        self.assertFalse(result["paired_replacement"]["automatic_eviction"])
+        self.assertIn("manual", result["protected_manual_thread_ids"])
+        pending = recommend_optional_chief_pins(profile, {
+            "observed_capacity": 3,
+            "pending_packs": 1,
+            "pinned_threads": pinned,
+            "candidates": [self.pin_candidate("new")],
+        })
+        self.assertEqual(pending["status"], "pending_pack_exists")
+        self.assertEqual(pending["candidates"], [])
+
     def test_core_global_profile_preserves_existing_agents_text(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -24,6 +24,40 @@
       "ordinary_failure_policy": "continue_bounded_diagnosis_repair_and_verification"
     }
   },
+  "pin_governance": {
+    "enabled": false,
+    "mandatory_core_roles": [
+      {"role": "general_office", "title": "General Office", "thread_id": null},
+      {"role": "todo", "title": "Chief TODO", "thread_id": null},
+      {"role": "creative_director", "title": "Creative Director", "thread_id": null},
+      {"role": "context_migration_monitor", "title": "Context Migration Monitor", "thread_id": null}
+    ],
+    "optional_chief_slots": {
+      "limit": 6,
+      "default_pin_primary_task": false,
+      "change_mode": "recommend_then_operator_approve",
+      "protect_manual_non_chief_pins": true,
+      "capacity_policy": "observed_capacity_then_paired_replacement"
+    },
+    "recommendation_policy": {
+      "owner": "general_office",
+      "verifier": "todo_read_only",
+      "max_candidates": 3,
+      "max_pending_packs": 1,
+      "criteria": ["user_delivery_value", "imminent_material_decision", "delay_cost", "cross_project_dependency", "activity", "evidence_confidence", "sidebar_cost"],
+      "default_exclusions": ["paused", "completed", "superseded", "migration_cancelled", "routine_push", "meeting_summary", "report_only", "process_only"]
+    },
+    "successor_inheritance": {
+      "enabled": true,
+      "exact_list_verification_required": true,
+      "pin_before_takeover": true,
+      "receipt_is_not_proof": true,
+      "replacement_policy": "single_same_lineage_after_safe_handoff"
+    },
+    "grandfathered_optional_chiefs": [],
+    "protected_manual_thread_ids": [],
+    "invalid_successor_thread_ids": []
+  },
   "visual_selection_gate": {
     "enabled": true,
     "review_hub_title": "Chief of Creative Direction｜创意总监"

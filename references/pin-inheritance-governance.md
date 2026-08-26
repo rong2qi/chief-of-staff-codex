@@ -1,26 +1,25 @@
-# Chief pin inheritance governance
+# Narrow Chief pin governance
 
-Every active Chief is a pinned authoritative entry. Pinning is an independently verified state, not an API receipt.
+Pinning is scarce operator-controlled navigation state, not a universal Chief health signal. Ordinary Chiefs default to unpinned. Their unpinned state is not a defect and cannot trigger a successor, a manual-pin request, or predecessor archival.
 
-## Verification rule
+## Eligible roles
 
-After calling the thread pin operation, call `list_threads` and require the Chief's exact task ID to appear in `pinnedThreads`. A result such as `pinned: true` only proves that the operation was accepted; it cannot prove the visible pin state. Record a failed independent check as `pin_verification_failed` in the Chief status and decision evidence.
+The only mandatory core roles are `general_office`, `todo`, `creative_director`, and `context_migration_monitor`, including a verified valid successor in the same lineage. Optional product Chief slots default to six, but observed capacity and protected manual pins are authoritative. An optional Chief may be appointed, pinned, unpinned, replaced, or inherit a slot only after a general-office recommendation and the operator's explicit approval of that exact change.
 
-The current Chief must remain pinned throughout its authority. Do not treat a manual unpin, stale list result, or a title match as sufficient. Resolve and compare the exact task ID.
+Grandfathered optional Chiefs may preserve their current pin until value review. Grandfathering grants no automatic successor inheritance and public files never contain their live IDs. Paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs are excluded by default; the central context migration monitor remains mandatory.
 
-## Successor authority gate
+## Recommendation and capacity
 
-A migration candidate does not become authoritative merely by returning `MIGRATION_READY`. After migration parity is verified, but before accepting takeover, switching the authoritative user entry, or archiving the predecessor:
+The general office owns one pending recommendation pack containing at most three candidates. TODO performs read-only checks of exact identity, currentness, duplication, evidence freshness, observed capacity, and lineage. It neither appoints nor pins.
 
-1. Pin the successor by exact task ID.
-2. Call `list_threads` independently.
-3. Require that exact successor ID in `pinnedThreads`.
-4. Only then accept takeover and archive the predecessor.
+Protect every manual non-Chief pin. When capacity is full, issue only a paired replacement recommendation against an approved or grandfathered optional slot. Never evict automatically, and never treat full capacity as a task defect.
 
-The parity handoff includes the goal, phase, pending approvals and TODOs, write ownership, evidence, task graph, Git state, next checkpoint, pause state, and applicable global rules. Pin inheritance cannot approve an action, change scope, transfer unverified ownership, or resume a paused project.
+Pin approval is narrow: it does not confirm the project goal, approve the Product Manager brief, pass product discovery, or authorize engineering, design, content, production, a protected action, or a visual choice. A nonexistent optional Chief is created only after appointment and pin approval; it still begins behind the normal goal-confirmation and product-discovery gates.
 
-## Failed verification
+## Verification and successor gate
 
-If the exact-ID check fails, the candidate does not take control. Record `pin_verification_failed`. At a safe handoff boundary, keep all failed or predecessor tasks recoverable and non-duplicated, archive the old authoritative Chief with reason `unable_to_pin`, and create exactly one replacement successor in the same saved project and existing work state. Transfer the complete parity handoff, pin the replacement, and repeat the independent `pinnedThreads` check before it takes control.
+A pin operation receipt such as `pinned: true` is not proof. For a mandatory core role or operator-approved optional lineage, call `list_threads` and require the exact task ID in `pinnedThreads`. Record a failed independent check as `pin_verification_failed`. This status is invalid for an ordinary or unapproved Chief.
 
-Never delete the predecessor or failed candidate. Never keep duplicate active Chiefs, create the replacement in a different project, change the project scope, clear or restore pause state, or use the migration to bypass a review or protected-action gate.
+Only an eligible mandatory or approved lineage can replace a failed successor. After a safe same-lineage handoff and `MIGRATION_READY`, create at most one replacement. Transfer the goal, phase, pending approvals/TODOs, write ownership, evidence, task graph, Git state, next checkpoint, and pause state. Verify the replacement's exact ID in a fresh `pinnedThreads` result before takeover, authoritative-entry switching, or predecessor archival. Archive the predecessor only after verified takeover.
+
+Never delete predecessors, create duplicate Chiefs, move to a different saved project, change scope or pause state, restore a paused project, or use pin inheritance to bypass an approval. Failures created under the superseded broad pin rule do not continue.
