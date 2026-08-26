@@ -71,6 +71,16 @@ python3 scripts/configure_preferences.py \
 - `grandmothered_optional_chiefs`, `protected_manual_thread_ids`, and
   `invalid_successor_thread_ids` are private live-state lists. Public examples
   keep them empty and never publish real task IDs.
+- `automation_inheritance`: disabled in public presets. Its fixed scope is
+  `bound_task_automations`; it inventories ID/name/kind/target/status/schedule/
+  prompt hash/notification policy, requires reuse and exact successor rebinding
+  before takeover/authority switch/archive, and accepts one minimal equivalent
+  only after live absence evidence and within existing authorization. Live
+  target/status/schedule evidence is mandatory; references and receipts are not
+  proof. Bundle, automation, and applicable pin parity jointly gate migration.
+  Failure records `automation_rebind_failed`, returns `MIGRATION_BLOCKED`, and
+  keeps the predecessor active and unarchived. Historical repair does not
+  unarchive, delete, or duplicate tasks or automations.
 
 Pre-matriarchal profiles are normalized through one compatibility shim. A
 legacy-only list is moved to `grandmothered_optional_chiefs`; a transition

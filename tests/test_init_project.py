@@ -415,8 +415,8 @@ class InitProjectTests(unittest.TestCase):
             self.assertIn("does not confirm the project goal", agents)
             self.assertIn("call `list_threads`", agents)
             self.assertIn("exact task ID in `pinnedThreads`", agents)
-            self.assertIn("After `MIGRATION_READY`", agents)
-            self.assertIn("before takeover or authoritative-entry switching", agents)
+            self.assertIn("before final `MIGRATION_READY`", agents)
+            self.assertIn("before final `MIGRATION_READY`, takeover, or authoritative-entry switching", agents)
             self.assertIn("`pin_verification_failed`", agents)
             self.assertIn("create at most one replacement", agents)
             self.assertIn("Never delete a predecessor, duplicate a Chief, change scope or pause state", agents)
@@ -429,6 +429,35 @@ class InitProjectTests(unittest.TestCase):
                 self.assertIn("list_threads", text)
                 self.assertIn("pinnedThreads", text)
                 self.assertIn("pin_verification_failed", text)
+
+    def test_generated_contract_enforces_automation_inheritance_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            agents = (target / "AGENTS.md").read_text()
+            for phrase in (
+                "exact ID/name/kind/target/status/schedule/prompt SHA-256/notification policy",
+                "Before takeover, authority switching, or predecessor archival",
+                "fresh live automation view", "automation_rebind_failed",
+                "bundle parity, automation parity, and applicable pin parity",
+            ):
+                self.assertIn(phrase, agents)
+
+    def test_previous_agents_contract_upgrades_with_automation_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            self.assertEqual(run(target).returncode, 0)
+            agents_path = target / "AGENTS.md"
+            agents = agents_path.read_text()
+            agents = "\n".join(
+                line for line in agents.splitlines()
+                if "automation inheritance" not in line
+                and "configuration reference or update receipt is not automation proof" not in line
+            ) + "\n"
+            agents_path.write_text(agents)
+            upgraded = run(target)
+            self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
+            self.assertIn("automation inheritance", agents_path.read_text())
 
     def test_pre_matriarchal_agents_contract_upgrades_without_conflict(self):
         with tempfile.TemporaryDirectory() as tmp:

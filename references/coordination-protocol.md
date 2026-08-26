@@ -52,7 +52,7 @@ When the projected continuation policy is `advance_best_safe_in_scope_path`, sel
 
 ## Durable task naming and state
 
-Ordinary Chiefs default to unpinned. Only a mandatory core or operator-approved optional lineage inherits a pin. For its migration or takeover, apply [pin-inheritance-governance.md](pin-inheritance-governance.md): after `MIGRATION_READY` parity and before authority changes or predecessor archival, independently call `list_threads` and require the successor's exact task ID in `pinnedThreads`. A pin operation receipt is not proof; failed verification cannot transfer control. An ordinary unapproved Chief's unpinned state is not a failure and never creates a replacement.
+Ordinary Chiefs default to unpinned. Only a mandatory core or operator-approved optional lineage inherits a pin. For its migration or takeover, apply [pin-inheritance-governance.md](pin-inheritance-governance.md): before final `MIGRATION_READY`, authority changes, or predecessor archival, require bundle parity, live automation parity, and applicable pin parity, then independently call `list_threads` and require the successor's exact task ID in `pinnedThreads`. A pin operation receipt is not proof; failed verification cannot transfer control. An ordinary unapproved Chief's unpinned state is not a failure and never creates a replacement.
 
 Title every durable child task `职务｜工作内容`. Keep the role short and make the work content outcome-oriented, for example `技术负责人｜支付架构决策`.
 

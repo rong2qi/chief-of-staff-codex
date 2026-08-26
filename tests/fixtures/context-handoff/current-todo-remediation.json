@@ -1,0 +1,37 @@
+{
+  "historical_state": {
+    "predecessor": "archived",
+    "successor": "active",
+    "old_automation": "absent",
+    "repair": "without_unarchive_delete_or_duplicate"
+  },
+  "source_automation": {
+    "id": "automation-legacy-1",
+    "name": "Unanswered Chief heartbeat",
+    "kind": "heartbeat",
+    "target_thread_id": "thread-old",
+    "status": "ACTIVE",
+    "schedule": {"hours": [9, 10, 22], "timezone": "local"},
+    "prompt_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "notification_policy": "normal"
+  },
+  "live_evidence": {
+    "evidence_kind": "live_automation_view",
+    "historical_state": {
+      "predecessor": "archived",
+      "successor": "active",
+      "repair": "without_unarchive_delete_or_duplicate"
+    },
+    "automations": [{
+      "id": "automation-equivalent-1",
+      "name": "Unanswered Chief heartbeat",
+      "kind": "heartbeat",
+      "target_thread_id": "thread-new",
+      "status": "ACTIVE",
+      "schedule": {"hours": [9, 10, 22], "timezone": "local"},
+      "prompt_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "notification_policy": "normal"
+    }],
+    "absent_automation_ids": ["automation-legacy-1"]
+  }
+}

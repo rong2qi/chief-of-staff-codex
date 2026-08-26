@@ -35,6 +35,12 @@ Preserve unknown fields. Times use 24-hour `HH:MM`; the interval is a positive i
 5. Use the minimum schedule set. One recurrence can combine times sharing the same minute; use separate automations only when the runtime cannot express the exact union without generating extra times. Never create duplicate reminders.
 6. Keep ordinary notifications enabled unless the user explicitly asks to mute them. Save confirmed thread and automation IDs back to the policy.
 
+## Successor inheritance
+
+Before a reminder target task's successor takes over, becomes the authoritative entry, or the predecessor is archived, inventory every bound reminder automation with exact ID, name, kind, target task ID, status, schedule, prompt SHA-256, and notification policy. Reuse the existing automation and rebind its exact target to the successor. Only when a fresh live view proves the old automation is absent, and creation remains inside the existing user authorization, create exactly one minimal equivalent.
+
+Re-read the live automation view and verify the exact successor target, status, schedule, prompt hash, and notification policy. A saved policy/configuration reference or create/update receipt is not proof. Two ACTIVE automations with the same reminder duty are forbidden. Any missing, duplicate, or mismatched binding records `automation_rebind_failed`, returns `MIGRATION_BLOCKED`, and keeps the predecessor active and unarchived. Bundle parity, automation parity, and applicable pin parity must all pass before takeover. Historical repair never unarchives or deletes the predecessor and never creates a duplicate task or reminder.
+
 Each run replaces the prior logical snapshot and sorts pending replies by urgency. Each item contains the Chief's exact title, request, request time or latest update, a one-sentence suggested reply, and task ID. Multiple visual decision IDs held by the Creative Director appear under one Creative Director TODO entry rather than as duplicate project entries. Remove resolved, withdrawn, superseded, and completed requests. The TODO task remains read-only.
 
 ## Disable

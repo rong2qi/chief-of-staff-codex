@@ -1,9 +1,10 @@
 # Rollover protocol
 
 1. Re-read the newest token event. Continue rollover only at 85% or above, at a safe boundary, with write owners identified.
-2. Capture exact IDs and distinguish facts, inference, questions, unsuccessful attempts, approvals, active roles, Git state, tests, risks, and the next action. Reference the immutable session by path and SHA-256 instead of copying it into the prompt.
+2. Capture exact IDs and distinguish facts, inference, questions, unsuccessful attempts, approvals, active roles, Git state, tests, risks, and the next action. Reference the immutable session by path and SHA-256 instead of copying it into the prompt. Inventory every task-bound automation with exact ID, name, kind, target task ID, status, schedule, prompt SHA-256, and notification policy.
 3. Build atomically and verify every checksum. Rebuild once if the session changes during capture.
 4. Prefer a clean task in the same saved project using the proven working-tree state. A same-history fork preserves continuity but is not a clean context reset.
-5. Require `MIGRATION_READY`. Pending approvals stay pending, children keep their Chief/phase, and write ownership does not change merely because the conversation changes.
-6. After parity, pin the successor when applicable, leave a redirect, and archive the predecessor. On mismatch, keep it active and retry once.
-
+5. Require a core bundle parity candidate. Pending approvals stay pending, children keep their Chief/phase, and write ownership does not change merely because the conversation changes. Do not emit final `MIGRATION_READY` yet.
+6. Before takeover, authority switching, or predecessor archival, reuse each bound automation and rebind it to the exact successor task ID. Only live absence plus existing authorization permits exactly one minimal equivalent. Preserve schedule, prompt semantics/hash, notification policy, status, and scope; duplicate ACTIVE same-duty automations are forbidden.
+7. Require a fresh, timestamped live automation view scoped to the exact predecessor target and recorded IDs; references and update receipts are not proof. Then pin the successor when applicable and require fresh exact-ID `list_threads` evidence.
+8. Emit final `MIGRATION_READY` only after bundle parity, automation parity, and applicable pin parity all pass. Any mismatch records `automation_rebind_failed`, returns `MIGRATION_BLOCKED`, and keeps the predecessor active and unarchived. After readiness, switch authority, leave a redirect, and archive the predecessor. For historical repair after archival, never unarchive/delete the predecessor or duplicate the task/automation.

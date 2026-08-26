@@ -58,6 +58,30 @@
     "protected_manual_thread_ids": [],
     "invalid_successor_thread_ids": []
   },
+  "automation_inheritance": {
+    "enabled": false,
+    "scope": "bound_task_automations",
+    "bundle_fields": ["id", "name", "kind", "target_thread_id", "status", "schedule", "prompt_sha256", "notification_policy"],
+    "rebind_before": ["takeover", "authority_switch", "predecessor_archive"],
+    "reuse_existing": true,
+    "missing_policy": "create_one_minimal_equivalent_within_existing_authorization",
+    "preserve": ["schedule", "prompt_semantics", "notification_policy", "scope"],
+    "duplicate_active_same_duty": "forbidden",
+    "verification": {
+      "live_evidence_required": true,
+      "exact_target_status_schedule_required": true,
+      "reference_or_receipt_is_not_proof": true
+    },
+    "migration_gate": {
+      "automation_parity_required": true,
+      "pin_parity_when_applicable": true,
+      "bundle_parity_required": true,
+      "failure_status": "MIGRATION_BLOCKED",
+      "failure_record": "automation_rebind_failed",
+      "keep_predecessor_active_unarchived": true
+    },
+    "historical_repair": "remediate_without_unarchive_delete_or_duplicate"
+  },
   "visual_selection_gate": {
     "enabled": true,
     "review_hub_title": "Chief of Creative Direction｜创意总监"

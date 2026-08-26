@@ -76,6 +76,21 @@ class PreferenceTests(unittest.TestCase):
             self.assertEqual(pin["grandmothered_optional_chiefs"], [])
             self.assertEqual(pin["protected_manual_thread_ids"], [])
             self.assertEqual(pin["invalid_successor_thread_ids"], [])
+            inheritance = profile["automation_inheritance"]
+            self.assertFalse(inheritance["enabled"])
+            self.assertEqual(inheritance["scope"], "bound_task_automations")
+            self.assertEqual(inheritance["migration_gate"]["failure_status"], "MIGRATION_BLOCKED")
+            self.assertTrue(inheritance["verification"]["live_evidence_required"])
+
+    def test_automation_inheritance_contract_fails_closed_when_weakened(self):
+        profile = json.loads(
+            (ROOT / "assets/operator-preferences.example.json").read_text()
+        )
+        profile["automation_inheritance"]["verification"]["reference_or_receipt_is_not_proof"] = False
+        self.assertTrue(any(
+            "reference_or_receipt_is_not_proof" in item
+            for item in validate_preferences(profile)
+        ))
 
     def test_legacy_profile_alias_migrates_one_way_and_dual_equal_is_accepted(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -200,6 +215,8 @@ class PreferenceTests(unittest.TestCase):
             content = agents.read_text(encoding="utf-8")
             self.assertIn("# Existing rule", content)
             self.assertEqual(content.count("chief-of-staff-preferences:start"), 1)
+            self.assertIn("automation_inheritance.enabled", content)
+            self.assertIn("automation_rebind_failed", content)
 
     def test_operator_preset_reconfigures_managed_block_idempotently(self):
         with tempfile.TemporaryDirectory() as tmp:

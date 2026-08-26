@@ -45,6 +45,12 @@ PIN_DEFAULT_EXCLUSIONS = [
     "paused", "completed", "superseded", "migration_cancelled", "routine_push",
     "meeting_summary", "report_only", "process_only",
 ]
+AUTOMATION_BUNDLE_FIELDS = [
+    "id", "name", "kind", "target_thread_id", "status", "schedule",
+    "prompt_sha256", "notification_policy",
+]
+AUTOMATION_REBIND_BEFORE = ["takeover", "authority_switch", "predecessor_archive"]
+AUTOMATION_PRESERVE = ["schedule", "prompt_semantics", "notification_policy", "scope"]
 
 
 class PreferenceError(ValueError):
@@ -229,6 +235,49 @@ def _validate_pin_governance(profile: dict[str, Any], errors: list[str]) -> None
         errors.append("protected manual pins cannot also be invalid successors")
 
 
+def _validate_automation_inheritance(profile: dict[str, Any], errors: list[str]) -> None:
+    section = _require_object(profile, "automation_inheritance", errors)
+    _require_bool(section, "enabled", "automation_inheritance", errors)
+    exact = {
+        "scope": "bound_task_automations",
+        "bundle_fields": AUTOMATION_BUNDLE_FIELDS,
+        "rebind_before": AUTOMATION_REBIND_BEFORE,
+        "reuse_existing": True,
+        "missing_policy": "create_one_minimal_equivalent_within_existing_authorization",
+        "preserve": AUTOMATION_PRESERVE,
+        "duplicate_active_same_duty": "forbidden",
+        "historical_repair": "remediate_without_unarchive_delete_or_duplicate",
+    }
+    for key, value in exact.items():
+        if section.get(key) != value:
+            errors.append(f"automation_inheritance.{key} is invalid")
+    verification = section.get("verification")
+    if not isinstance(verification, dict):
+        errors.append("automation_inheritance.verification must be an object")
+        verification = {}
+    for key in (
+        "live_evidence_required", "exact_target_status_schedule_required",
+        "reference_or_receipt_is_not_proof",
+    ):
+        if verification.get(key) is not True:
+            errors.append(f"automation_inheritance.verification.{key} must be true")
+    gate = section.get("migration_gate")
+    if not isinstance(gate, dict):
+        errors.append("automation_inheritance.migration_gate must be an object")
+        gate = {}
+    gate_exact = {
+        "automation_parity_required": True,
+        "pin_parity_when_applicable": True,
+        "bundle_parity_required": True,
+        "failure_status": "MIGRATION_BLOCKED",
+        "failure_record": "automation_rebind_failed",
+        "keep_predecessor_active_unarchived": True,
+    }
+    for key, value in gate_exact.items():
+        if gate.get(key) != value:
+            errors.append(f"automation_inheritance.migration_gate.{key} is invalid")
+
+
 def validate_preferences(profile: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     try:
@@ -247,6 +296,7 @@ def validate_preferences(profile: dict[str, Any]) -> list[str]:
         errors.append("report_review_mode must be all_reports or exception_only")
 
     _validate_pin_governance(profile, errors)
+    _validate_automation_inheritance(profile, errors)
 
     governance = _require_object(profile, "governance_model", errors)
     _require_bool(governance, "enabled", "governance_model", errors)
@@ -603,6 +653,8 @@ def managed_agents_block(profile_path: Path, renderer_path: Path) -> str:
 - If `governance_model.enabled` is true, treat the operator as chair: project Chiefs own routine administration, auditors have evidence-only authority, roles follow the registered chain of command, and an unresolved decision freezes only its affected write surface. Route non-visual statutory exceptions only to the configured general-office task as `CHAIR_BRIEF_READY`; only that task may emit the operator-facing `USER_ACTION_REQUIRED`. TODO scans only the general office and Creative Director.
 - Apply `pin_governance` narrowly. Ordinary Chiefs default unpinned, and their unpinned state is not a failure. Mandatory pins are limited to the configured general office, TODO, Creative Director, context migration monitor, and their valid successors. An optional product Chief may be pinned, created for pinning, unpinned, or replaced only after a general-office recommendation and the operator's explicit approval; pin approval never confirms the project goal or authorizes engineering, design, production, or bypass of the Product Manager discovery gate.
 - The general office recommends at most three candidates in one pending pack. TODO is read-only and checks identity, currentness, duplication, evidence freshness, observed capacity, and lineage. Preserve manual non-Chief pins. At full capacity, produce only a paired replacement recommendation; never evict automatically. Exclude paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs by default. A `pinned: true` receipt is not proof; fresh `list_threads` exact-ID presence is required. Only mandatory or operator-approved lineages may use the safe-handoff single-replacement successor path.
+- If `automation_inheritance.enabled` is true, inventory every automation bound to a migrating task with exact ID, name, kind, target task ID, status, schedule, prompt SHA-256, and notification policy. Before takeover, authority switching, or predecessor archival, reuse and rebind each automation to the exact successor task ID. Only when live evidence proves the old automation is absent may one minimal equivalent be created within existing authorization. Preserve schedule, prompt semantics, notification policy, and scope; forbid duplicate active same-duty automations.
+- Automation references and update receipts are not proof. Require a fresh live automation view proving exact target, status, and schedule. Missing or mismatched automation parity records `automation_rebind_failed`, returns `MIGRATION_BLOCKED`, and keeps the predecessor active and unarchived. Takeover requires bundle parity, automation parity, and pin parity when applicable. Historical repair never unarchives or deletes a predecessor and never creates duplicate tasks or automations.
 - If `governance_model.continuation_policy.enabled` is true, every project Chief must select and execute the strongest evidence-backed safe in-scope continuation without asking the operator. Do not present stopping, preserving a failed state, or delaying as peer options while a safe continuation exists; the operator will initiate those choices when wanted. Escalate only when continuing itself requires a new permission or creation of a new Chief. An ordinary failure remains Chief-owned while another bounded safe diagnostic, repair, or verification path exists. This policy does not authorize protected actions, bypass the Creative Director visual gate, or conceal safety/security evidence; those constraints determine whether a path is safe and already authorized.
 - If `visual_selection_gate.enabled` is true, require clickable non-final previews and the operator's explicit selection before final visual implementation. Route every visual packet only to the configured `Chief of Creative Direction｜创意总监` task; do not duplicate it to the general Chief task, project tasks, roles, or TODO. If unanswered, only that Creative Director task remains the authoritative waiting item for the TODO scanner.
 - If `american_english_coaching.enabled` is true, append its configured written, spoken, and idiom sections. Include casual conversation only when `include_casual_chat` is true.
