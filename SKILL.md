@@ -18,6 +18,7 @@ metadata:
 - 当 `governance_model.mode` 为 `chair_led_cabinet` 时，操作者是主席而不是日常审批员：项目 Chief 独立承担行政执行与普通验收；审计者只有证据核验权；“一人之下”只汇总非视觉法定例外；创意总监是唯一视觉审议入口；TODO 只提醒这两个权威入口。
 - 当 `governance_model.continuation_policy.enabled` 为 `true` 时，项目 Chief 必须选择并执行证据最强、在范围内且安全的继续路径，不得在仍有安全推进方案时把停止、保留失败状态或延期作为并列选项交给操作者。只有继续本身需要新增权限或创建新 Chief 时才报备；普通失败仍由 Chief 通过限界诊断、修复或复检继续负责。
 - 当 `project_start_capability_discovery.enabled` 为 `true` 时，项目启动阶段必须先深度检索现有工具、插件、Skill、官方能力、开源项目与外部配置范式，并在生产执行前完成技术栈相关复核；不得为了节省 Token 或时间而跳过可复用能力，也不得在没有证据包时直接闭门重造。
+- 所有长期 Chief 任务的标题必须以 `Chief of ` 开头；只有全局总务和 TODO 两个登记角色例外。非 Chief 长期岗位继续使用 `职务｜工作内容`。用户给出的中文职位名应保留为 `｜` 后的说明，不得因此省略 Chief 前缀。
 - 所有创建或实质改变产品、服务、代码、设计、内容资产或其他验收交付物的 Chief 项目，在目标边界确认后、生产执行前必须完成产品分类和产品发现门。仅同步、推送既定变更、会议总结、备案/流程推进或只读审计汇总可记录理由后豁免。
 
 - Default `effective_throughput` permits at most two independent phase lanes. Every checkpoint needs verifiable evidence; stop and self-check after two evidence-free checkpoints.
@@ -29,6 +30,7 @@ metadata:
 - With `governance_model.mode = chair_led_cabinet`, the operator acts as chair rather than routine approver: project Chiefs own administration and ordinary acceptance, auditors have evidence-only authority, the general office consolidates non-visual statutory exceptions, the Creative Director is the sole visual review hub, and TODO reminds only those two authoritative channels.
 - With `governance_model.continuation_policy.enabled`, each project Chief selects and executes the strongest evidence-backed safe in-scope continuation. It does not offer stopping, preserving a failed state, or delaying as peer options while a safe continuation exists. It escalates only when continuing itself requires a new permission or a new Chief; ordinary failures remain Chief-owned through bounded diagnosis, repair, and verification.
 - With `project_start_capability_discovery.enabled`, project startup begins with deep discovery of existing tools, plugins, Skills, official capabilities, open-source projects, and reusable external configuration patterns, followed by a stack-specific confirmation before production execution. Do not skip reusable capabilities to save tokens or time, and do not start a closed-world rebuild without an evidence pack.
+- Every durable Chief task title starts with the exact prefix `Chief of `. Only the registered global general-office and TODO roles are exceptions. Non-Chief durable roles keep `Role｜Work outcome`; preserve a user-supplied local-language role name after `｜` instead of dropping the Chief prefix.
 - Every Chief project that creates or materially changes a product, service, code, design, content asset, or other acceptance-tested deliverable must complete project classification and the product-discovery gate after goal-boundary confirmation and before production execution. Only synchronization, an already-decided push, meeting summary, filing/process follow-up, or read-only audit/aggregation may use a reasoned exemption.
 
 Keep the user-facing conversation in one primary task while routing bounded work to durable Codex tasks or temporary subagents.
@@ -84,7 +86,7 @@ Initialization explicitly authorizes creation of project tasks needed to coordin
 ## Choose the smallest coordination layer
 
 - Handle clear, low-risk coordination-only work with one write surface in the Chief of Staff task. A deliverable Chief still requires the Product Manager gate even when implementation is small; ordinary work outside an initialized Chief remains eligible for single-agent execution.
-- Create a durable Codex task when work needs its own long-lived context, role, status, or user-visible history. Title it `职务｜工作内容`.
+- Create a durable Codex task when work needs its own long-lived context, role, status, or user-visible history. Title every Chief `Chief of <domain or project>｜<optional local-language label>`; only the registered general office and TODO may omit that prefix. Title a non-Chief durable role `职务｜工作内容`.
 - Use temporary subagents inside a task for bounded research, discussion, testing, or independent review. Temporary agents report to their parent task and do not become a second user-facing control plane.
 - Do not create duplicate investigations or parallel writers for the same files, external record, branch, deployment target, or deliverable.
 - An unconfirmed final goal permits only goal-clarifying read-only discovery, not implementation. A confirmed but unclassified project permits classification only; a deliverable project whose product gate has not passed permits product discovery and reversible planning but no production execution.

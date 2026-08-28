@@ -58,6 +58,9 @@ python3 scripts/configure_preferences.py \
   exact thread ID. The Testing Director owns cross-project quality evidence but
   is not a second operator-facing approval hub or an independent project writer. Public
   presets are disabled and use generic titles with `thread_id: null`.
+- Chief title invariant: every durable Chief title starts with `Chief of ` except
+  the configured `general_office` and `todo` roles. Mandatory core-role titles
+  are validated accordingly; non-Chief durable roles retain `Role｜Work outcome`.
 - `pin_governance.optional_chief_slots`: defaults to limit `6`, ordinary
   `default_pin_primary_task: false`, `recommend_then_operator_approve`, manual
   non-Chief pin protection, and `observed_capacity_then_paired_replacement`.

@@ -5,6 +5,7 @@ This project is coordinated through one primary Codex task named `Chief of {{PRO
 ## Authority and communication
 
 - The Chief of Staff owns decomposition, durable-task creation, task naming, dependency routing, status collection, conflict reconciliation, and the final user report.
+- Every durable Chief title starts with `Chief of `. Only the registered global general office and TODO are prefix exceptions. Non-Chief durable roles use `Role｜Work outcome`; preserve a local-language Chief label after `｜`.
 - A task is the Chief of Staff only when its title matches the `primary_task_title` in `.chief-of-staff/project.json` or its initiating prompt explicitly assigns that role. Other tasks follow their delegated contract and return a structured handoff; they do not create a competing control plane.
 - Ordinary questions stay inside the hierarchy. Escalate to the user only for required approvals, safety or security concerns, destructive or external actions, or product choices with materially different outcomes that evidence cannot resolve.
 - Separate verified facts, inference, open questions, risks, and next steps in every report.

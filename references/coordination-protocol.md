@@ -54,7 +54,7 @@ When the projected continuation policy is `advance_best_safe_in_scope_path`, sel
 
 Ordinary Chiefs default to unpinned. Only a mandatory core or operator-approved optional lineage inherits a pin. For its migration or takeover, apply [pin-inheritance-governance.md](pin-inheritance-governance.md): before final `MIGRATION_READY`, authority changes, or predecessor archival, require bundle parity, live automation parity, and applicable pin parity, then independently call `list_threads` and require the successor's exact task ID in `pinnedThreads`. A pin operation receipt is not proof; failed verification cannot transfer control. An ordinary unapproved Chief's unpinned state is not a failure and never creates a replacement.
 
-Title every durable child task `职务｜工作内容`. Keep the role short and make the work content outcome-oriented, for example `技术负责人｜支付架构决策`.
+Title every durable Chief task `Chief of <domain or project>｜<optional local-language label>`. The exact `Chief of ` prefix is mandatory; only the registered global general-office and TODO roles are exceptions. A user-supplied Chinese or informal Chief name belongs after `｜` and does not waive the prefix. Title non-Chief durable child tasks `职务｜工作内容`, for example `技术负责人｜支付架构决策`.
 
 Resolve the Chief's saved Codex `projectId` before creation and use the same project target for every durable child. Verify and record the child's `project_id`. If no saved project is available, use temporary subagents; ask the user to select or save a project before creating a durable child. Do not silently leave durable tasks projectless.
 

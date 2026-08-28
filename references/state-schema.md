@@ -43,7 +43,7 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `subagent_meetings_enabled`: boolean; permits durable roles to convene bounded temporary-agent meetings.
 - `max_meeting_participants`: positive integer; maximum temporary participants per meeting, default `3`.
 - `control_plane`: `native` for the Codex-native implementation.
-- `task_title_pattern`: durable task naming convention.
+- `task_title_pattern`: non-Chief durable-role naming convention. Durable Chiefs use `Chief of <domain or project>｜<optional local-language label>`; only the registered global general office and TODO may omit the prefix.
 - `approval_required`: actions that always require explicit user authorization.
 
 ## pin-state.json

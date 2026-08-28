@@ -38,6 +38,8 @@ PIN_CORE_ROLES = {
     "general_office", "todo", "creative_director", "context_migration_monitor",
     "testing_director",
 }
+CHIEF_TITLE_PREFIX = "Chief of "
+CHIEF_TITLE_EXCEPTION_ROLES = {"general_office", "todo"}
 PIN_CRITERIA = [
     "user_delivery_value", "imminent_material_decision", "delay_cost",
     "cross_project_dependency", "activity", "evidence_confidence", "sidebar_cost",
@@ -139,8 +141,20 @@ def _validate_pin_governance(profile: dict[str, Any], errors: list[str]) -> None
             errors.append(f"{label}.role is duplicated")
         else:
             seen_roles.add(role)
-        if not isinstance(item.get("title"), str) or not item.get("title"):
+        title = item.get("title")
+        if not isinstance(title, str) or not title:
             errors.append(f"{label}.title must be a non-empty string")
+        elif (
+            role in PIN_CORE_ROLES - CHIEF_TITLE_EXCEPTION_ROLES
+            and (
+                not title.startswith(CHIEF_TITLE_PREFIX)
+                or not title[len(CHIEF_TITLE_PREFIX):].strip()
+            )
+        ):
+            errors.append(
+                f"{label}.title must start with {CHIEF_TITLE_PREFIX!r}; "
+                "only general_office and todo are exceptions"
+            )
         thread_id = item.get("thread_id")
         if thread_id is not None and (not isinstance(thread_id, str) or not thread_id):
             errors.append(f"{label}.thread_id must be a non-empty string or null")
@@ -687,6 +701,7 @@ def managed_agents_block(profile_path: Path, renderer_path: Path) -> str:
 
 - Before a complete user-facing reply, read `{profile_path}` when it exists and apply only policies whose `enabled` value is true. Missing or invalid profiles disable optional behavior; they do not change core safety or approval rules.
 - If `operator_salutation.enabled` is true, use its configured value unless the operator explicitly overrides it in the current conversation.
+- Name every durable Chief task with the exact prefix `Chief of `. The only title-prefix exceptions are the configured general-office task and TODO task. Non-Chief durable roles keep the `Role｜Work outcome` convention. Treat a user-supplied title as content guidance, not permission to drop the Chief prefix, unless it names one of those two exception roles.
 - Apply `report_review_mode`. In `exception_only`, the project Chief reviews routine child progress and final handoffs against their contracts without asking the operator. Escalate only goal confirmation, material product choices, visual choices through the Creative Director, protected actions, safety/security, ownership or scope conflicts, failed or unverifiable work, depth expansion, and final project completion.
 - If `governance_model.enabled` is true, treat the operator as chair: project Chiefs own routine administration, auditors have evidence-only authority, roles follow the registered chain of command, and an unresolved decision freezes only its affected write surface. Route non-visual statutory exceptions only to the configured general-office task as `CHAIR_BRIEF_READY`; only that task may emit the operator-facing `USER_ACTION_REQUIRED`. TODO scans only the general office and Creative Director.
 - Apply `pin_governance` narrowly. Ordinary Chiefs default unpinned, and their unpinned state is not a failure. Mandatory pins are limited to the configured general office, TODO, Creative Director, context migration monitor, Testing Director, and their valid successors. The Testing Director is an evidence and quality-policy role, not a second operator-facing approval hub and not an independent project writer. An optional product Chief may be pinned, created for pinning, unpinned, or replaced only after a general-office recommendation and the operator's explicit approval; pin approval never confirms the project goal or authorizes engineering, design, production, or bypass of the Product Manager discovery gate.

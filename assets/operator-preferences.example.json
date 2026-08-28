@@ -29,9 +29,9 @@
     "mandatory_core_roles": [
       {"role": "general_office", "title": "General Office", "thread_id": null},
       {"role": "todo", "title": "Chief TODO", "thread_id": null},
-      {"role": "creative_director", "title": "Creative Director", "thread_id": null},
-      {"role": "context_migration_monitor", "title": "Context Migration Monitor", "thread_id": null},
-      {"role": "testing_director", "title": "Testing Director", "thread_id": null}
+      {"role": "creative_director", "title": "Chief of Creative Direction", "thread_id": null},
+      {"role": "context_migration_monitor", "title": "Chief of Context Migration", "thread_id": null},
+      {"role": "testing_director", "title": "Chief of Testing", "thread_id": null}
     ],
     "optional_chief_slots": {
       "limit": 6,

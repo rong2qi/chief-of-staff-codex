@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 
 from scripts.preference_lib import (
+    CHIEF_TITLE_EXCEPTION_ROLES,
+    CHIEF_TITLE_PREFIX,
     PIN_CRITERIA,
     PreferenceError,
     atomic_write_json,
@@ -72,6 +74,11 @@ class PreferenceTests(unittest.TestCase):
                 "context_migration_monitor", "testing_director",
             })
             self.assertTrue(all(item["thread_id"] is None for item in pin["mandatory_core_roles"]))
+            self.assertTrue(all(
+                item["role"] in CHIEF_TITLE_EXCEPTION_ROLES
+                or item["title"].startswith(CHIEF_TITLE_PREFIX)
+                for item in pin["mandatory_core_roles"]
+            ))
             self.assertEqual(pin["optional_chief_slots"]["limit"], 6)
             self.assertFalse(pin["optional_chief_slots"]["default_pin_primary_task"])
             self.assertEqual(pin["grandmothered_optional_chiefs"], [])
@@ -146,6 +153,26 @@ class PreferenceTests(unittest.TestCase):
         profile = self.enabled_pin_profile()
         profile["pin_governance"]["mandatory_core_roles"][1]["thread_id"] = "core-0"
         self.assertTrue(any("must be unique" in item for item in validate_preferences(profile)))
+
+    def test_core_chief_titles_require_prefix_except_general_office_and_todo(self):
+        profile = self.enabled_pin_profile()
+        testing = next(
+            item for item in profile["pin_governance"]["mandatory_core_roles"]
+            if item["role"] == "testing_director"
+        )
+        testing["title"] = "Testing Director"
+        self.assertTrue(any(
+            "must start with 'Chief of '" in item
+            for item in validate_preferences(profile)
+        ))
+
+        profile = self.enabled_pin_profile()
+        office = next(
+            item for item in profile["pin_governance"]["mandatory_core_roles"]
+            if item["role"] == "general_office"
+        )
+        office["title"] = "冯宝宝"
+        self.assertEqual(validate_preferences(profile), [])
 
     def test_capability_discovery_contract_fails_closed_when_weakened(self):
         profile = json.loads(
@@ -238,6 +265,7 @@ class PreferenceTests(unittest.TestCase):
             self.assertIn("automation_rebind_failed", content)
             self.assertIn("project_start_capability_discovery.enabled", content)
             self.assertIn("Testing Director", content)
+            self.assertIn("Name every durable Chief task", content)
 
     def test_operator_preset_reconfigures_managed_block_idempotently(self):
         with tempfile.TemporaryDirectory() as tmp:
