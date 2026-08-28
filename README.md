@@ -21,10 +21,11 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 ### 核心能力
 
 - 每个项目拥有可区分的主任务名称：`Chief of <项目名>`。
-- 普通 Chief 默认不置顶；只有四个中央角色及妈妈批准的可选产品 Chief 席位需要置顶和受控继承。操作回执不算证据，eligible lineage 只有在精确 task ID 出现在新的 `pinnedThreads` 查询中后才能切换权威入口。
+- 普通 Chief 默认不置顶；general office、TODO、创意总监、上下文迁移监控和测试总监五个中央角色，以及妈妈批准的可选产品 Chief 席位，才需要置顶和受控继承。测试总监负责跨项目质量政策与证据审查，不是第二个面向妈妈的审批入口，也不自动取得项目写权限。操作回执不算证据，eligible lineage 只有在精确 task ID 出现在新的 `pinnedThreads` 查询中后才能切换权威入口。
 - 默认采用 `exception_only`：Chief 验收普通岗位里程碑和最终交接，只有列明例外与项目最终完成才进入操作者批复；Chief 会批量收集同时到达的汇报，避免遗漏。
 - Chief 必须先与你确认最终目标、交付物和验收标准；未达成最终验收前持续分阶段推进。
 - 目标确认后必须分类：交付型项目先由 depth-2 产品经理完成四路产品发现与立项门，才可创建或启动生产岗位；纯同步/推送、会议总结、备案/流程推进或只读汇总可记录理由后豁免，范围扩展时立即重分类。
+- 项目启动先做覆盖优先的能力检索：扫描内置/已安装能力、可用插件与 Skill、官方文档、维护活跃的开源项目和可复用外部配置；技术栈确定后再做一次栈级复核。不得为了省 Token 或时间直接闭门重造，测试相关候选由测试总监审查；付费、扩权、生产与其他高风险动作仍需单独批准。
 - 默认三层管理结构，阶段负责人可以管理执行岗位；增加第四层前必须申请。
 - 用户只与一个统一负责的主任务交互。
 - 长期任务统一命名为 `职务｜工作成果`。
@@ -107,6 +108,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 
 - `governance_model.enabled`（主席负责制）
 - `governance_model.continuation_policy.enabled`（安全范围内默认持续推进）
+- `project_start_capability_discovery.enabled`（项目启动能力深搜与栈级复核）
 - `visual_selection_gate.enabled`
 - `american_english_coaching.enabled` 与 `include_casual_chat`
 - `audio_playback.enabled`、`provider`、`clips`、`voice`、`rate` 与 `storage_root`
@@ -183,7 +185,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 
 交付型项目改用 `deliverable_project`，任命产品经理并完成四条证据线后，`gate_status` 才能变为 `passed`。
 
-Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。普通 Chief 默认不置顶（`pin_primary_task=false`），未置顶不是故障。只有 general office、TODO、Creative Director、context migration monitor 四个中央角色强制置顶；可选产品 Chief 必须先由一般办公室形成最多 3 名、最多 1 个待决包，再由 TODO 只读核验身份、时效、重复、证据新鲜度、容量与 lineage，最后由妈妈逐项批准任命和置顶。默认最多 6 个可选席位，并保护人工 non-Chief pins；历史保留席位统一称为 grandmothered optional Chiefs，在价值复核前保持现状但不自动继承。容量满时只给 paired replacement recommendation，不自动挤出。置顶批准不等于目标确认，也不授权工程、设计或生产，产品经理与四条 discovery lane 的产品门保持不变。仅 mandatory/approved lineage 可在安全核心交接候选后建立一个 replacement；自动化 parity 与 fresh `list_threads` 精确 ID 复核必须在最终 `MIGRATION_READY`、接管和归档 predecessor 前通过，`pinned:true` 回执不是证据。
+Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。普通 Chief 默认不置顶（`pin_primary_task=false`），未置顶不是故障。general office、TODO、Creative Director、context migration monitor 和 Testing Director 五个中央角色强制置顶；可选产品 Chief 必须先由一般办公室形成最多 3 名、最多 1 个待决包，再由 TODO 只读核验身份、时效、重复、证据新鲜度、容量与 lineage，最后由妈妈逐项批准任命和置顶。默认最多 6 个可选席位，并保护人工 non-Chief pins；历史保留席位统一称为 grandmothered optional Chiefs，在价值复核前保持现状但不自动继承。容量满时只给 paired replacement recommendation，不自动挤出。置顶批准不等于目标确认，也不授权工程、设计或生产，产品经理与四条 discovery lane 的产品门保持不变。仅 mandatory/approved lineage 可在安全核心交接候选后建立一个 replacement；自动化 parity 与 fresh `list_threads` 精确 ID 复核必须在最终 `MIGRATION_READY`、接管和归档 predecessor 前通过，`pinned:true` 回执不是证据。
 
 初始化器还会创建：
 
@@ -333,10 +335,11 @@ Each durable task can use installed Skills automatically and can summon temporar
 ### Key features
 
 - A distinguishable main task name for every project: `Chief of <project name>`.
-- Ordinary Chiefs default to unpinned. Only the four central roles and operator-approved optional product Chief slots require pins and controlled inheritance. An operation receipt is not evidence; an eligible lineage needs the exact task ID in a fresh `pinnedThreads` listing before authority transfer.
+- Ordinary Chiefs default to unpinned. Only the five central roles—general office, TODO, Creative Director, context migration monitor, and Testing Director—and operator-approved optional product Chief slots require pins and controlled inheritance. The Testing Director owns cross-project quality policy and evidence review, not a second operator-facing approval path or automatic project write access. An operation receipt is not evidence; an eligible lineage needs the exact task ID in a fresh `pinnedThreads` listing before authority transfer.
 - `exception_only` review by default: the Chief accepts routine milestone and role-final handoffs, while enumerated exceptions and final project completion go to the operator; simultaneous updates are collected in a batch.
 - Mandatory user confirmation of the final goal, deliverables, and acceptance criteria before implementation.
 - Mandatory post-confirmation classification: deliverable projects must pass a four-lane, depth-2 Product Manager discovery gate before production roles are created or started. Pure synchronization/push, meeting-summary, filing/process, or read-only aggregation work may be exempt with a recorded reason and must be reclassified if scope expands.
+- Coverage-first capability discovery at project startup: scan built-in and installed capabilities, available plugins and Skills, official documentation, maintained open-source projects, and reusable external configuration before closed-world implementation. Refresh the scan against the chosen stack before production, and route test-related candidates to the Testing Director. Payment, permission expansion, production actions, and other protected changes remain separately approved.
 - Continuous phase dispatch until final acceptance, with a three-level management hierarchy by default.
 - One accountable main task for user communication.
 - Durable tasks named `Role｜Work outcome`.
@@ -480,7 +483,7 @@ At initialization, `.chief-of-staff/product-discovery.json` is `pending/unclassi
 
 A deliverable project uses `deliverable_project`, appoints the Product Manager, and can reach `gate_status: passed` only after all four evidence lanes are complete.
 
-The Skill reads `primary_task_title` and renames the current main task to that exact value. Ordinary Chiefs default to unpinned (`pin_primary_task=false`), and that is not a defect. Only the general office, TODO, Creative Director, and context migration monitor are mandatory pins. An optional product Chief requires a general-office pack of at most three candidates, read-only TODO checks of identity, currentness, duplication, evidence freshness, capacity, and lineage, then the operator's explicit appointment and pin approval. The default optional limit is six; manual non-Chief pins are protected. Historically retained slots are called grandmothered optional Chiefs; they remain unchanged pending value review but do not inherit automatically. Full capacity yields only a paired replacement recommendation. Pin approval does not confirm the goal or authorize engineering, design, or production; the Product Manager and four-lane discovery gate remains mandatory. Only a mandatory or approved lineage may create one replacement after a safe core handoff candidate; automation parity and a fresh exact-ID `list_threads` check must pass before final `MIGRATION_READY`, takeover, and predecessor archival. A `pinned:true` receipt is not proof.
+The Skill reads `primary_task_title` and renames the current main task to that exact value. Ordinary Chiefs default to unpinned (`pin_primary_task=false`), and that is not a defect. Only the general office, TODO, Creative Director, context migration monitor, and Testing Director are mandatory pins. An optional product Chief requires a general-office pack of at most three candidates, read-only TODO checks of identity, currentness, duplication, evidence freshness, capacity, and lineage, then the operator's explicit appointment and pin approval. The default optional limit is six; manual non-Chief pins are protected. Historically retained slots are called grandmothered optional Chiefs; they remain unchanged pending value review but do not inherit automatically. Full capacity yields only a paired replacement recommendation. Pin approval does not confirm the goal or authorize engineering, design, or production; the Product Manager and four-lane discovery gate remains mandatory. Only a mandatory or approved lineage may create one replacement after a safe core handoff candidate; automation parity and a fresh exact-ID `list_threads` check must pass before final `MIGRATION_READY`, takeover, and predecessor archival. A `pinned:true` receipt is not proof.
 
 The initializer also creates:
 

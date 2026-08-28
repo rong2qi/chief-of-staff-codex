@@ -30,7 +30,8 @@
       {"role": "general_office", "title": "General Office", "thread_id": null},
       {"role": "todo", "title": "Chief TODO", "thread_id": null},
       {"role": "creative_director", "title": "Creative Director", "thread_id": null},
-      {"role": "context_migration_monitor", "title": "Context Migration Monitor", "thread_id": null}
+      {"role": "context_migration_monitor", "title": "Context Migration Monitor", "thread_id": null},
+      {"role": "testing_director", "title": "Testing Director", "thread_id": null}
     ],
     "optional_chief_slots": {
       "limit": 6,
@@ -81,6 +82,19 @@
       "keep_predecessor_active_unarchived": true
     },
     "historical_repair": "remediate_without_unarchive_delete_or_duplicate"
+  },
+  "project_start_capability_discovery": {
+    "enabled": true,
+    "mode": "coverage_first",
+    "timing": "before_production_execution",
+    "search_surfaces": ["host_and_installed_capabilities", "codex_plugins", "codex_skills", "official_documentation", "open_source_projects", "external_configuration_patterns"],
+    "evaluation_criteria": ["project_fit", "productivity_gain", "maintenance_activity", "license", "supply_chain_risk", "permission_impact", "integration_impact", "overlap"],
+    "require_evidence_pack": true,
+    "require_reuse_before_build": true,
+    "testing_director_review": "required_for_test_capabilities",
+    "acquisition_policy": "selected_fit_only_after_review",
+    "cost_policy": "coverage_over_token_or_time_savings",
+    "protected_actions": "separate_explicit_approval"
   },
   "visual_selection_gate": {
     "enabled": false,

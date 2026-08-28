@@ -4,7 +4,7 @@ Pinning is scarce operator-controlled navigation state, not a universal Chief he
 
 ## Eligible roles
 
-The only mandatory core roles are `general_office`, `todo`, `creative_director`, and `context_migration_monitor`, including a verified valid successor in the same lineage. Optional product Chief slots default to six, but observed capacity and protected manual pins are authoritative. An optional Chief may be appointed, pinned, unpinned, replaced, or inherit a slot only after a general-office recommendation and the operator's explicit approval of that exact change.
+The only mandatory core roles are `general_office`, `todo`, `creative_director`, `context_migration_monitor`, and `testing_director`, including a verified valid successor in the same lineage. The Testing Director is the cross-project quality-policy and evidence-review core role; it reports through the general office and is not an independent operator-facing approval hub or project writer. Optional product Chief slots default to six, but observed capacity and protected manual pins are authoritative. An optional Chief may be appointed, pinned, unpinned, replaced, or inherit a slot only after a general-office recommendation and the operator's explicit approval of that exact change.
 
 Grandmothered optional Chiefs may preserve their current pin until value review. Grandmothering grants no automatic successor inheritance and public files never contain their live IDs. Paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs are excluded by default; the central context migration monitor remains mandatory.
 

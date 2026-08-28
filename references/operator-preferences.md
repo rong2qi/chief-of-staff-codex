@@ -53,8 +53,10 @@ python3 scripts/configure_preferences.py \
 ## Schema and behavior
 
 - `pin_governance`: global policy for scarce Chief pin slots. Its enabled form
-  registers exactly one `general_office`, `todo`, `creative_director`, and
-  `context_migration_monitor`, each with a non-empty exact thread ID. Public
+  registers exactly one `general_office`, `todo`, `creative_director`,
+  `context_migration_monitor`, and `testing_director`, each with a non-empty
+  exact thread ID. The Testing Director owns cross-project quality evidence but
+  is not a second operator-facing approval hub or an independent project writer. Public
   presets are disabled and use generic titles with `thread_id: null`.
 - `pin_governance.optional_chief_slots`: defaults to limit `6`, ordinary
   `default_pin_primary_task: false`, `recommend_then_operator_approve`, manual
@@ -101,6 +103,14 @@ field, so repeated migration is idempotent.
   preserving a failed state, and delaying remain operator-initiated choices while
   such a path exists. Only a continuation that itself needs a new permission or
   a new Chief is escalated; all protected-action and safety boundaries remain.
+- `project_start_capability_discovery.enabled`: requires a broad project-start
+  capability scan and a stack-specific confirmation before production. It covers
+  built-in/installed capabilities, available Codex plugins and Skills, official
+  documentation, maintained open-source projects, and reusable external
+  configuration patterns. Discovery is coverage-first rather than token/time
+  minimizing, while selection, installation, payment, permissions, and other
+  protected actions retain their evidence and approval boundaries. Test-related
+  findings require Testing Director review.
 - `visual_selection_gate.enabled`: require clickable, non-final previews and an
   explicit operator choice before final visual implementation. `review_hub_title`
   identifies the one operator-facing Creative Director task; project Chiefs must

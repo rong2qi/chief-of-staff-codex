@@ -68,7 +68,8 @@ class PreferenceTests(unittest.TestCase):
             pin = profile["pin_governance"]
             self.assertFalse(pin["enabled"])
             self.assertEqual({item["role"] for item in pin["mandatory_core_roles"]}, {
-                "general_office", "todo", "creative_director", "context_migration_monitor"
+                "general_office", "todo", "creative_director",
+                "context_migration_monitor", "testing_director",
             })
             self.assertTrue(all(item["thread_id"] is None for item in pin["mandatory_core_roles"]))
             self.assertEqual(pin["optional_chief_slots"]["limit"], 6)
@@ -81,6 +82,14 @@ class PreferenceTests(unittest.TestCase):
             self.assertEqual(inheritance["scope"], "bound_task_automations")
             self.assertEqual(inheritance["migration_gate"]["failure_status"], "MIGRATION_BLOCKED")
             self.assertTrue(inheritance["verification"]["live_evidence_required"])
+            discovery = profile["project_start_capability_discovery"]
+            self.assertTrue(discovery["enabled"])
+            self.assertEqual(discovery["mode"], "coverage_first")
+            self.assertTrue(discovery["require_reuse_before_build"])
+            self.assertEqual(
+                discovery["testing_director_review"],
+                "required_for_test_capabilities",
+            )
 
     def test_automation_inheritance_contract_fails_closed_when_weakened(self):
         profile = json.loads(
@@ -129,7 +138,7 @@ class PreferenceTests(unittest.TestCase):
             with self.assertRaises(PreferenceError):
                 read_json(path)
 
-    def test_enabled_pin_governance_requires_four_unique_exact_ids(self):
+    def test_enabled_pin_governance_requires_five_unique_exact_ids(self):
         profile = self.enabled_pin_profile()
         self.assertEqual(validate_preferences(profile), [])
         profile["pin_governance"]["mandatory_core_roles"][0]["thread_id"] = None
@@ -137,6 +146,16 @@ class PreferenceTests(unittest.TestCase):
         profile = self.enabled_pin_profile()
         profile["pin_governance"]["mandatory_core_roles"][1]["thread_id"] = "core-0"
         self.assertTrue(any("must be unique" in item for item in validate_preferences(profile)))
+
+    def test_capability_discovery_contract_fails_closed_when_weakened(self):
+        profile = json.loads(
+            (ROOT / "assets/operator-preferences.example.json").read_text()
+        )
+        profile["project_start_capability_discovery"]["require_reuse_before_build"] = False
+        self.assertTrue(any(
+            "project_start_capability_discovery.require_reuse_before_build" in item
+            for item in validate_preferences(profile)
+        ))
 
     def test_pin_recommendation_is_bounded_and_excludes_stale_or_process_work(self):
         profile = self.enabled_pin_profile()
@@ -217,6 +236,8 @@ class PreferenceTests(unittest.TestCase):
             self.assertEqual(content.count("chief-of-staff-preferences:start"), 1)
             self.assertIn("automation_inheritance.enabled", content)
             self.assertIn("automation_rebind_failed", content)
+            self.assertIn("project_start_capability_discovery.enabled", content)
+            self.assertIn("Testing Director", content)
 
     def test_operator_preset_reconfigures_managed_block_idempotently(self):
         with tempfile.TemporaryDirectory() as tmp:

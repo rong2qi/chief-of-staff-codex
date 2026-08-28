@@ -36,6 +36,7 @@ CLIP_KINDS = {"written", "spoken"}
 TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 PIN_CORE_ROLES = {
     "general_office", "todo", "creative_director", "context_migration_monitor",
+    "testing_director",
 }
 PIN_CRITERIA = [
     "user_delivery_value", "imminent_material_decision", "delay_cost",
@@ -51,6 +52,15 @@ AUTOMATION_BUNDLE_FIELDS = [
 ]
 AUTOMATION_REBIND_BEFORE = ["takeover", "authority_switch", "predecessor_archive"]
 AUTOMATION_PRESERVE = ["schedule", "prompt_semantics", "notification_policy", "scope"]
+CAPABILITY_DISCOVERY_SURFACES = [
+    "host_and_installed_capabilities", "codex_plugins", "codex_skills",
+    "official_documentation", "open_source_projects",
+    "external_configuration_patterns",
+]
+CAPABILITY_DISCOVERY_CRITERIA = [
+    "project_fit", "productivity_gain", "maintenance_activity", "license",
+    "supply_chain_risk", "permission_impact", "integration_impact", "overlap",
+]
 
 
 class PreferenceError(ValueError):
@@ -136,14 +146,14 @@ def _validate_pin_governance(profile: dict[str, Any], errors: list[str]) -> None
             errors.append(f"{label}.thread_id must be a non-empty string or null")
         if isinstance(thread_id, str) and thread_id:
             core_thread_ids.append(thread_id)
-    if len(roles) != 4 or seen_roles != PIN_CORE_ROLES:
+    if len(roles) != len(PIN_CORE_ROLES) or seen_roles != PIN_CORE_ROLES:
         errors.append("pin_governance.mandatory_core_roles requires each core role exactly once")
     if len(core_thread_ids) != len(set(core_thread_ids)):
         errors.append("pin_governance mandatory core thread IDs must be unique")
     if pin.get("enabled") is True:
         if profile.get("scope") != "global":
             errors.append("enabled pin_governance requires global scope")
-        if len(core_thread_ids) != 4:
+        if len(core_thread_ids) != len(PIN_CORE_ROLES):
             errors.append("enabled pin_governance requires a thread_id for every core role")
 
     slots = pin.get("optional_chief_slots")
@@ -278,6 +288,33 @@ def _validate_automation_inheritance(profile: dict[str, Any], errors: list[str])
             errors.append(f"automation_inheritance.migration_gate.{key} is invalid")
 
 
+def _validate_capability_discovery(profile: dict[str, Any], errors: list[str]) -> None:
+    section = profile.get("project_start_capability_discovery")
+    if section is None:
+        return
+    if not isinstance(section, dict):
+        errors.append("project_start_capability_discovery must be an object")
+        return
+    _require_bool(
+        section, "enabled", "project_start_capability_discovery", errors
+    )
+    exact = {
+        "mode": "coverage_first",
+        "timing": "before_production_execution",
+        "search_surfaces": CAPABILITY_DISCOVERY_SURFACES,
+        "evaluation_criteria": CAPABILITY_DISCOVERY_CRITERIA,
+        "require_evidence_pack": True,
+        "require_reuse_before_build": True,
+        "testing_director_review": "required_for_test_capabilities",
+        "acquisition_policy": "selected_fit_only_after_review",
+        "cost_policy": "coverage_over_token_or_time_savings",
+        "protected_actions": "separate_explicit_approval",
+    }
+    for key, value in exact.items():
+        if section.get(key) != value:
+            errors.append(f"project_start_capability_discovery.{key} is invalid")
+
+
 def validate_preferences(profile: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     try:
@@ -297,6 +334,7 @@ def validate_preferences(profile: dict[str, Any]) -> list[str]:
 
     _validate_pin_governance(profile, errors)
     _validate_automation_inheritance(profile, errors)
+    _validate_capability_discovery(profile, errors)
 
     governance = _require_object(profile, "governance_model", errors)
     _require_bool(governance, "enabled", "governance_model", errors)
@@ -651,10 +689,11 @@ def managed_agents_block(profile_path: Path, renderer_path: Path) -> str:
 - If `operator_salutation.enabled` is true, use its configured value unless the operator explicitly overrides it in the current conversation.
 - Apply `report_review_mode`. In `exception_only`, the project Chief reviews routine child progress and final handoffs against their contracts without asking the operator. Escalate only goal confirmation, material product choices, visual choices through the Creative Director, protected actions, safety/security, ownership or scope conflicts, failed or unverifiable work, depth expansion, and final project completion.
 - If `governance_model.enabled` is true, treat the operator as chair: project Chiefs own routine administration, auditors have evidence-only authority, roles follow the registered chain of command, and an unresolved decision freezes only its affected write surface. Route non-visual statutory exceptions only to the configured general-office task as `CHAIR_BRIEF_READY`; only that task may emit the operator-facing `USER_ACTION_REQUIRED`. TODO scans only the general office and Creative Director.
-- Apply `pin_governance` narrowly. Ordinary Chiefs default unpinned, and their unpinned state is not a failure. Mandatory pins are limited to the configured general office, TODO, Creative Director, context migration monitor, and their valid successors. An optional product Chief may be pinned, created for pinning, unpinned, or replaced only after a general-office recommendation and the operator's explicit approval; pin approval never confirms the project goal or authorizes engineering, design, production, or bypass of the Product Manager discovery gate.
+- Apply `pin_governance` narrowly. Ordinary Chiefs default unpinned, and their unpinned state is not a failure. Mandatory pins are limited to the configured general office, TODO, Creative Director, context migration monitor, Testing Director, and their valid successors. The Testing Director is an evidence and quality-policy role, not a second operator-facing approval hub and not an independent project writer. An optional product Chief may be pinned, created for pinning, unpinned, or replaced only after a general-office recommendation and the operator's explicit approval; pin approval never confirms the project goal or authorizes engineering, design, production, or bypass of the Product Manager discovery gate.
 - The general office recommends at most three candidates in one pending pack. TODO is read-only and checks identity, currentness, duplication, evidence freshness, observed capacity, and lineage. Preserve manual non-Chief pins. At full capacity, produce only a paired replacement recommendation; never evict automatically. Exclude paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs by default. A `pinned: true` receipt is not proof; fresh `list_threads` exact-ID presence is required. Only mandatory or operator-approved lineages may use the safe-handoff single-replacement successor path.
 - If `automation_inheritance.enabled` is true, inventory every automation bound to a migrating task with exact ID, name, kind, target task ID, status, schedule, prompt SHA-256, and notification policy. Before takeover, authority switching, or predecessor archival, reuse and rebind each automation to the exact successor task ID. Only when live evidence proves the old automation is absent may one minimal equivalent be created within existing authorization. Preserve schedule, prompt semantics, notification policy, and scope; forbid duplicate active same-duty automations.
 - Automation references and update receipts are not proof. Require a fresh live automation view proving exact target, status, and schedule. Missing or mismatched automation parity records `automation_rebind_failed`, returns `MIGRATION_BLOCKED`, and keeps the predecessor active and unarchived. Takeover requires bundle parity, automation parity, and pin parity when applicable. Historical repair never unarchives or deletes a predecessor and never creates duplicate tasks or automations.
+- If `project_start_capability_discovery.enabled` is true, begin an evidence-backed capability scan during project startup and complete a stack-specific confirmation before production execution. Search existing host capabilities, installed and available Codex plugins and Skills, official documentation, maintained open-source projects, and reusable external configuration patterns. Optimize for coverage and productivity rather than token or elapsed-time savings; require fit, maintenance, license, supply-chain, permission, overlap, and integration evidence. Reuse or adapt a suitable capability before building a replacement. Pull or install only selected, reviewed capabilities within existing authorization; payment, permission expansion, production/external actions, and other protected changes still require separate explicit approval. Testing-related findings require Testing Director review.
 - If `governance_model.continuation_policy.enabled` is true, every project Chief must select and execute the strongest evidence-backed safe in-scope continuation without asking the operator. Do not present stopping, preserving a failed state, or delaying as peer options while a safe continuation exists; the operator will initiate those choices when wanted. Escalate only when continuing itself requires a new permission or creation of a new Chief. An ordinary failure remains Chief-owned while another bounded safe diagnostic, repair, or verification path exists. This policy does not authorize protected actions, bypass the Creative Director visual gate, or conceal safety/security evidence; those constraints determine whether a path is safe and already authorized.
 - If `visual_selection_gate.enabled` is true, require clickable non-final previews and the operator's explicit selection before final visual implementation. Route every visual packet only to the configured `Chief of Creative Direction｜创意总监` task; do not duplicate it to the general Chief task, project tasks, roles, or TODO. If unanswered, only that Creative Director task remains the authoritative waiting item for the TODO scanner.
 - If `american_english_coaching.enabled` is true, append its configured written, spoken, and idiom sections. Include casual conversation only when `include_casual_chat` is true.
