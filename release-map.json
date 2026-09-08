@@ -1,0 +1,13 @@
+{
+  "schema": "CHIEF_SOURCE_RELEASE_MAP_V1",
+  "chief_payload_root": ".",
+  "chief_payload_excludes": [
+    "agent-orchestration",
+    "agent-profiles"
+  ],
+  "versioned_companions": {
+    "agent-orchestration": "agent-orchestration/SKILL.md",
+    "agent-profiles": "agent-profiles/config.toml"
+  },
+  "note": "Companions are separately versioned source candidates; this map does not authorize installation."
+}

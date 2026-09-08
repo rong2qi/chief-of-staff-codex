@@ -1,0 +1,1 @@
+Historical C2 transport retained in commit 81a1aa7; exact payload is decoded from creative-managed-one-cycle.json.

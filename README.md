@@ -21,8 +21,9 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 ### 核心能力
 
 - 每个项目拥有可区分的主任务名称：`Chief of <项目名>`。
-- 普通 Chief 默认不置顶；general office、TODO、创意总监、上下文迁移监控和测试总监五个中央角色，以及妈妈批准的可选产品 Chief 席位，才需要置顶和受控继承。测试总监负责跨项目质量政策与证据审查，不是第二个面向妈妈的审批入口，也不自动取得项目写权限。操作回执不算证据，eligible lineage 只有在精确 task ID 出现在新的 `pinnedThreads` 查询中后才能切换权威入口。
+- 普通 Chief 默认不置顶；只有 general office、TODO、创意总监、上下文迁移监控四个中央角色，以及妈妈批准的可选产品 Chief 席位，才需要置顶和受控继承。测试总监同样默认不置顶、只做跨项目质量证据审查，既不占 mandatory core，也不占 optional seat。操作回执不算证据，eligible lineage 只有在精确 task ID 出现在新的 `pinnedThreads` 查询中后才能切换权威入口。
 - 默认采用 `exception_only`：Chief 验收普通岗位里程碑和最终交接，只有列明例外与项目最终完成才进入操作者批复；Chief 会批量收集同时到达的汇报，避免遗漏。
+- 可选的“推荐即委托”规则只允许一般办公室直接放行唯一、证据完整、固定范围且非生产的 allowlisted 动作，并写入稳定审计标记；已委托或已解决事项不会进入 TODO。操作者专属决定、既有明确拒绝、失败、漂移和范围扩张不会被自动放行。
 - Chief 必须先与你确认最终目标、交付物和验收标准；未达成最终验收前持续分阶段推进。
 - 目标确认后必须分类：交付型项目先由 depth-2 产品经理完成四路产品发现与立项门，才可创建或启动生产岗位；纯同步/推送、会议总结、备案/流程推进或只读汇总可记录理由后豁免，范围扩展时立即重分类。
 - 项目启动先做覆盖优先的能力检索：扫描内置/已安装能力、可用插件与 Skill、官方文档、维护活跃的开源项目和可复用外部配置；技术栈确定后再做一次栈级复核。不得为了省 Token 或时间直接闭门重造，测试相关候选由测试总监审查；付费、扩权、生产与其他高风险动作仍需单独批准。
@@ -39,6 +40,8 @@ Chief of Staff 为每个 Codex 项目提供一个统一的用户交互入口。�
 - 汇报明确区分已验证事实、推断、待确认项、风险和下一步。
 - 删除、生产变更、发布、支付、外发消息和扩大权限前必须取得用户明确授权。
 - 使用项目文件保存协调状态，并为未来外置控制平面预留适配接口。
+- 严格交付闭环必须由项目显式采用：`init_project.py --delivery-ledger-mode strict` 仅记录下次活跃回合、冷启动或既有授权 heartbeat 的对账义务；它不提供守护进程，也不声称会自动唤醒宿主。
+- 连续执行也必须显式采用：完整批准包绑定已有计划、审批队列和唯一写入者；只有保留的真实进展可超过三轮。它不隐含远程、生产、付款、外发或扩权，也不会自行唤醒或派工。
 - 默认采用 `effective_throughput`：最多两个互不冲突的阶段并行；每个检查点都要产生可验证证据，连续两个检查点无证据即停止并自查。
 - 已确认、可验收且没有人工审批门的目标才可使用 `/goal`；长期目标不会绕过确认或高影响操作的单独审批。
 - 创意总监在北京时间每天 11:00 和 20:00 执行有证据的主动扫描，而非空转目标；最多一条待定创意建议。启用视觉门时，它还是唯一面向操作者的视觉审阅中心：接收项目预览包、维护视觉待决队列，并只把操作者原话回传来源 Chief；除此以外只读、不主动干预、不修改项目文件。
@@ -108,7 +111,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 
 - `governance_model.enabled`（主席负责制）
 - `governance_model.continuation_policy.enabled`（安全范围内默认持续推进）
-- `project_start_capability_discovery.enabled`（项目启动能力深搜与栈级复核）
+- `project_start_capability_discovery.enabled`（兼容键：旧配置为启动/生产前复核；完整配置为所有 Chief 的关键节点能力发现，仅发现、评估与推荐）
 - `visual_selection_gate.enabled`
 - `american_english_coaching.enabled` 与 `include_casual_chat`
 - `audio_playback.enabled`、`provider`、`clips`、`voice`、`rate` 与 `storage_root`
@@ -185,7 +188,7 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
 
 交付型项目改用 `deliverable_project`，任命产品经理并完成四条证据线后，`gate_status` 才能变为 `passed`。
 
-Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。所有长期 Chief 标题都必须以 `Chief of ` 开头，只有登记的全局总务与 TODO 例外；非 Chief 长期岗位继续使用 `职务｜工作内容`。普通 Chief 默认不置顶（`pin_primary_task=false`），未置顶不是故障。general office、TODO、Creative Director、context migration monitor 和 Testing Director 五个中央角色强制置顶；可选产品 Chief 必须先由一般办公室形成最多 3 名、最多 1 个待决包，再由 TODO 只读核验身份、时效、重复、证据新鲜度、容量与 lineage，最后由妈妈逐项批准任命和置顶。默认最多 6 个可选席位，并保护人工 non-Chief pins；历史保留席位统一称为 grandmothered optional Chiefs，在价值复核前保持现状但不自动继承。容量满时只给 paired replacement recommendation，不自动挤出。置顶批准不等于目标确认，也不授权工程、设计或生产，产品经理与四条 discovery lane 的产品门保持不变。仅 mandatory/approved lineage 可在安全核心交接候选后建立一个 replacement；自动化 parity 与 fresh `list_threads` 精确 ID 复核必须在最终 `MIGRATION_READY`、接管和归档 predecessor 前通过，`pinned:true` 回执不是证据。
+Skill 会读取 `primary_task_title` 并把当前主任务重命名为该值。所有长期 Chief 标题都必须以 `Chief of ` 开头；登记的全局总务、TODO 与非 Chief 上下文迁移监视器是标题例外，其他非 Chief 长期岗位继续使用 `职务｜工作内容`。普通 Chief 默认不置顶（`pin_primary_task=false`），未置顶不是故障。只有 general office、TODO、Creative Director 和 context migration monitor 四个中央角色强制置顶；Testing Director 是普通、默认不置顶的 coordination-only 证据角色，也不占 optional seat。可选产品 Chief 必须先由一般办公室形成最多 3 名、最多 1 个待决包，再由 TODO 只读核验身份、时效、重复、证据新鲜度、容量与 lineage，最后由妈妈逐项批准任命和置顶。默认最多 6 个可选席位，并保护人工 non-Chief pins；历史保留席位统一称为 grandmothered optional Chiefs，在价值复核前保持现状但不自动继承。容量满时只给 paired replacement recommendation，不自动挤出。置顶批准不等于目标确认，也不授权工程、设计或生产，产品经理与四条 discovery lane 的产品门保持不变。仅 mandatory/approved lineage 可在安全核心交接候选后建立一个 replacement；自动化 parity 与 fresh `list_threads` 精确 ID 复核必须在最终 `MIGRATION_READY`、接管和归档 predecessor 前通过，`pinned:true` 回执不是证据。
 
 初始化器还会创建：
 
@@ -310,6 +313,8 @@ Chief 会在 `task-registry.json` 中为确有工作交集的同项目岗位建�
 
 仓库同时提供 `context-handoff` Skill。它只使用最新输入 token 与模型上下文窗口的比值：75%刷新检查点，85%在安全边界创建 `原对话名｜续N`，95%进入紧急迁移。累计 token 和账户限额不会被误当成上下文占用。
 
+检查点捕获只把“捕获后 source session 改变”和无覆盖意图的迁移编号碰撞视为瞬时竞态。每个 source-task 安全边界最多执行一次原子 build+verify，始终使用下一个未占用的单调编号，绝不覆盖或删除旧包；后续安全边界自动继续，不再询问妈妈是否重试。连续三次瞬时失败转为 Chief 自管的只读诊断与退避。之所以禁止紧循环，是因为反复捕获会持续占用磁盘与 I/O、改写自身 session 并掩盖权限、存储、工作树、校验或 parity 缺陷。低于 75%取消陈旧触发；有效 bundle 产生前不得创建 successor。
+
 项目迁移包保存在 `.codex/context-migrations/`，无项目任务保存在 `~/.codex/context-migrations/`。新对话必须返回 `MIGRATION_READY` 并核对目标、审批、任务关系、写入权、Git 状态、证据、下一步、暂停状态和全局规则。若原任务绑定自动化，迁移包还必须逐项记录精确 ID、名称、类型、目标 task ID、状态、schedule、prompt SHA-256 和通知策略；在接管、切换权威入口或归档 predecessor 前，复用并重绑到精确 successor task ID，再用 live automation view 核验。配置引用和 update receipt 不是证明。缺失时仅在既有授权内建立一个最小等价项；禁止同职责 ACTIVE 重复，且必须保持 schedule、prompt 语义、通知策略和范围。任一不一致均记录 `automation_rebind_failed`、返回 `MIGRATION_BLOCKED` 并保持 predecessor active/unarchived。
 
 普通未获批 Chief 的 successor 不继承置顶，也不因未置顶触发替换。只有 mandatory 或妈妈批准的 optional lineage，在完成 bundle parity、automation parity 与适用的 pin parity 后，才可接管；置顶 successor 仍须用 fresh `list_threads` 独立确认精确 task ID 位于 `pinnedThreads`，`pinned: true` 只表示操作已受理。失败则记录 `pin_verification_failed`，不接受接管，并按安全边界的同项目单 replacement 流程处理。旧对话不会删除，不得重复 Chief、改变范围、恢复暂停或绕过审批；已归档 predecessor 的历史自动化异常只修复 successor 绑定，不反向解档、删除或重复创建。
@@ -335,14 +340,15 @@ Each durable task can use installed Skills automatically and can summon temporar
 ### Key features
 
 - A distinguishable main task name for every project: `Chief of <project name>`.
-- Ordinary Chiefs default to unpinned. Only the five central roles—general office, TODO, Creative Director, context migration monitor, and Testing Director—and operator-approved optional product Chief slots require pins and controlled inheritance. The Testing Director owns cross-project quality policy and evidence review, not a second operator-facing approval path or automatic project write access. An operation receipt is not evidence; an eligible lineage needs the exact task ID in a fresh `pinnedThreads` listing before authority transfer.
+- Ordinary Chiefs default to unpinned. Only four central roles—general office, TODO, Creative Director, and context migration monitor—and operator-approved optional product Chief slots require pins and controlled inheritance. The Testing Director remains ordinary/default-unpinned and coordination-only, occupying neither a mandatory core pin nor an optional seat. An operation receipt is not evidence; an eligible lineage needs the exact task ID in a fresh `pinnedThreads` listing before authority transfer.
 - `exception_only` review by default: the Chief accepts routine milestone and role-final handoffs, while enumerated exceptions and final project completion go to the operator; simultaneous updates are collected in a batch.
+- Optional recommended-action delegation lets the general office directly authorize only one evidence-complete, fixed-surface, nonproduction allowlisted action with a stable audit marker. Delegated or resolved work stays out of TODO; operator-only decisions, prior denial, failure, drift, and scope expansion never auto-delegate.
 - Mandatory user confirmation of the final goal, deliverables, and acceptance criteria before implementation.
 - Mandatory post-confirmation classification: deliverable projects must pass a four-lane, depth-2 Product Manager discovery gate before production roles are created or started. Pure synchronization/push, meeting-summary, filing/process, or read-only aggregation work may be exempt with a recorded reason and must be reclassified if scope expands.
-- Coverage-first capability discovery at project startup: scan built-in and installed capabilities, available plugins and Skills, official documentation, maintained open-source projects, and reusable external configuration before closed-world implementation. Refresh the scan against the chosen stack before production, and route test-related candidates to the Testing Director. Payment, permission expansion, production actions, and other protected changes remain separately approved.
+- Lifecycle capability discovery for every registered Chief at six key events, while retaining the legacy startup-only profile shape for compatibility. Full lifecycle mode searches reusable local, official, open-source, managed, data/model, testing, operational, and expert surfaces, then produces at most one deduplicated material pack with three fixed-version candidates. It is discover/evaluate/recommend only: installation, pulls, downloads, enablement, account connections, dependencies, payment, outreach, external sends, production use, and project mutation remain separately authorized. Testing candidates go first to the Testing Director; visual direction stays with the Creative Director.
 - Continuous phase dispatch until final acceptance, with a three-level management hierarchy by default.
 - One accountable main task for user communication.
-- Durable Chiefs named `Chief of <domain or project>｜<optional local-language label>`, with only the registered general office and TODO exempt from the prefix; non-Chief durable roles use `Role｜Work outcome`.
+- Durable Chiefs named `Chief of <domain or project>｜<optional local-language label>`; the registered general office, TODO, and non-Chief context migration monitor are title exceptions, while other non-Chief durable roles use `Role｜Work outcome`.
 - Temporary subagent meetings inside durable tasks.
 - Luna for read-only exploration, Terra as the sole implementation writer, and Sol for high-risk arbitration by default.
 - One writer per file, external record, branch, deployment target, or deliverable.
@@ -353,6 +359,7 @@ Each durable task can use installed Skills automatically and can summon temporar
 - Persistent project state with a reserved adapter seam for a future external control plane.
 - Effective throughput: at most two independent phase lanes, checkpoint evidence, and a stop/self-check after two evidence-free checkpoints.
 - `/goal` only after a confirmed, testable goal with no human gate; durable goals never bypass protected-action approvals.
+- When explicitly enabled, autonomy policy groups foreseeable goal actions into one conditional approval package and reuses only currently revalidated approved items. Preparation, evidence collection, and candidate defects remain separate. A genuine new phase renews only its local defect allowance; permission and safety boundaries remain unchanged. Final visual selection and final acceptance may stay deferred gates on their affected surfaces.
 - Evidence-backed Creative Director scans at 11:00 and 20:00 Beijing time, with no more than one pending creative recommendation. When the visual gate is enabled, it also becomes the only operator-facing visual review hub: it receives project preview packets and relays only the operator's exact decision back to the source Chief.
 - An independent cloud deployment registry; a registry record never authorizes production work.
 - An optional human visual-selection gate: projects submit clickable previews only to the pinned `Chief of Creative Direction｜创意总监`; project Chiefs, roles, the general Chief task, and TODO must not duplicate the request, and no unselected option may become the final version.
@@ -483,7 +490,7 @@ At initialization, `.chief-of-staff/product-discovery.json` is `pending/unclassi
 
 A deliverable project uses `deliverable_project`, appoints the Product Manager, and can reach `gate_status: passed` only after all four evidence lanes are complete.
 
-The Skill reads `primary_task_title` and renames the current main task to that exact value. Every durable Chief title starts with `Chief of `; only the registered global general office and TODO are prefix exceptions, while non-Chief durable roles use `Role｜Work outcome`. Ordinary Chiefs default to unpinned (`pin_primary_task=false`), and that is not a defect. Only the general office, TODO, Creative Director, context migration monitor, and Testing Director are mandatory pins. An optional product Chief requires a general-office pack of at most three candidates, read-only TODO checks of identity, currentness, duplication, evidence freshness, capacity, and lineage, then the operator's explicit appointment and pin approval. The default optional limit is six; manual non-Chief pins are protected. Historically retained slots are called grandmothered optional Chiefs; they remain unchanged pending value review but do not inherit automatically. Full capacity yields only a paired replacement recommendation. Pin approval does not confirm the goal or authorize engineering, design, or production; the Product Manager and four-lane discovery gate remains mandatory. Only a mandatory or approved lineage may create one replacement after a safe core handoff candidate; automation parity and a fresh exact-ID `list_threads` check must pass before final `MIGRATION_READY`, takeover, and predecessor archival. A `pinned:true` receipt is not proof.
+The Skill reads `primary_task_title` and renames the current main task to that exact value. Every durable Chief title starts with `Chief of `; the registered general office, TODO, and non-Chief context migration monitor are title exceptions, while other non-Chief durable roles use `Role｜Work outcome`. Ordinary Chiefs default to unpinned (`pin_primary_task=false`), and that is not a defect. Only the general office, TODO, Creative Director, and context migration monitor are mandatory pins. The Testing Director is an ordinary, default-unpinned, coordination-only evidence role and occupies no optional seat. An optional product Chief requires a general-office pack of at most three candidates, read-only TODO checks of identity, currentness, duplication, evidence freshness, capacity, and lineage, then the operator's explicit appointment and pin approval. The default optional limit is six; manual non-Chief pins are protected. Historically retained slots are called grandmothered optional Chiefs; they remain unchanged pending value review but do not inherit automatically. Full capacity yields only a paired replacement recommendation. Pin approval does not confirm the goal or authorize engineering, design, or production; the Product Manager and four-lane discovery gate remains mandatory. Only a mandatory or approved lineage may create one replacement after a safe core handoff candidate; automation parity and a fresh exact-ID `list_threads` check must pass before final `MIGRATION_READY`, takeover, and predecessor archival. A `pinned:true` receipt is not proof.
 
 The initializer also creates:
 
@@ -572,7 +579,7 @@ Compatibility mode `all_reports` restores the previous behavior in which every m
 
 ### Chair-led cabinet governance
 
-With `governance_model.mode = chair_led_cabinet`, the operator retains final-goal, material product-direction, visual-selection, protected-action, Chief appointment/pause/removal, and final project acceptance powers. Project Chiefs are accountable for routine administration, role management, ordinary acceptance, one bounded repair cycle, and safe phase advancement. Read-only verifiers have evidence authority only.
+With `governance_model.mode = chair_led_cabinet`, the operator retains final-goal, material product-direction, visual-selection, protected-action, Chief appointment/pause/removal, and final project acceptance powers. Project Chiefs are accountable for routine administration, role management, ordinary acceptance, up to three focused repair-and-independent-recheck cycles after the initial independent verification, and safe phase advancement. Read-only verifiers have evidence authority only.
 
 Routine roles use `CHIEF_REVIEW_READY`. Non-visual statutory exceptions use `CHAIR_BRIEF_READY` to the general office, which deduplicates and compresses them before emitting `USER_ACTION_REQUIRED`; visual decisions remain exclusive to the Creative Director. TODO scans only those two authoritative hubs. Waiting freezes only the affected write surface while independent safe work continues.
 
@@ -600,6 +607,8 @@ Every unfinished-project report includes the final goal, current phase, verified
 
 The repository also includes `context-handoff`. It uses only newest input tokens divided by the model context window: checkpoint at 75%, create `Original title｜Continuation N` at a safe boundary at 85%, and prioritize migration at 95%. Cumulative and account usage are ignored.
 
+Checkpoint capture automatically tolerates only an exact source-session-change race or a non-overwriting migration-number collision. It performs at most one atomic build+verify per source-task safe boundary, always selects a new monotonic number, and never overwrites or deletes an older bundle. A later safe boundary retries without asking the operator; three consecutive transient failures enter Chief-owned read-only diagnosis/backoff. This is deliberately not a tight loop because repeated capture consumes disk/I/O, can mutate its own source session, and can hide permission, storage, worktree, validation, or parity defects. Below 75% the stale checkpoint trigger is cancelled; no successor is created before a valid bundle.
+
 Project bundles live in `.codex/context-migrations/`; projectless bundles live in `~/.codex/context-migrations/`. A successor must return `MIGRATION_READY` and match goals, approvals, task graph, write ownership, Git state, evidence, next action, pause state, and global instructions. For each task-bound automation, the bundle records exact ID, name, kind, target task ID, status, schedule, prompt SHA-256, and notification policy. Before takeover, authority switching, or predecessor archival, reuse and rebind it to the exact successor task ID, then verify it in a fresh live automation view. Configuration references and update receipts are not proof. Only proven live absence plus existing authorization permits one minimal equivalent; duplicate ACTIVE same-duty automations are forbidden, and schedule, prompt semantics, notification policy, and scope remain unchanged. Any mismatch records `automation_rebind_failed`, returns `MIGRATION_BLOCKED`, and keeps the predecessor active and unarchived.
 
 An ordinary unapproved Chief does not inherit a pin and never enters replacement merely because it is unpinned. For a mandatory or operator-approved optional lineage, bundle parity, automation parity, and applicable pin parity must all pass. A fresh `list_threads` exact-ID check remains mandatory; `pinned: true` is only an operation receipt. A failed check records `pin_verification_failed` and denies takeover. Predecessors remain recoverable; migration cannot create duplicate Chiefs, change scope or pause state, or bypass approval. Historical automation repair after archival never unarchives/deletes the predecessor or duplicates the task or automation.
@@ -614,12 +623,14 @@ An ordinary unapproved Chief does not inherit a pin and never enters replacement
 
 - `SKILL.md`: Skill routing and operating instructions / Skill 路由与操作说明。
 - `scripts/init_project.py`: safe project initializer and validator / 安全的项目初始化与校验脚本。
+- `scripts/continuous_execution.py`: exact local execution-package validation and return intents / 精确本地执行包校验与回流意图。
 - `scripts/configure_preferences.py`: idempotent preference onboarding / 幂等偏好配置器。
 - `scripts/render_english_audio.py`: opt-in offline attachment renderer for `auto`/`macos_say`; never used by `host_builtin` / `auto`、`macos_say` 的可选离线附件渲染器，`host_builtin` 不调用。
 - `assets/project-template/`: generated project contract and agent profiles / 项目契约与角色配置模板。
 - `assets/operator-preferences.example.json`: privacy-safe core defaults / 隐私安全的核心默认偏好。
 - `assets/presets/`: opt-in preference presets / 可主动启用的偏好预设。
-- `references/`: coordination protocol, enforceable product-discovery governance, and persistent state schema / 协调协议、可执行产品发现治理与持久状态结构。
+- `references/`: coordination protocol, project-path portability, enforceable product-discovery governance, and persistent state schema / 协调协议、项目路径可移植规则、可执行产品发现治理与持久状态结构。
+- `references/continuous-execution.md`: opt-in progress, return, resource, and delegated-testing boundary / 连续执行的进展、回流、资源和委托测试边界。
 - `references/operator-preferences.md`: onboarding, schema, and privacy behavior / 首次配置、结构与隐私行为。
 - `assets/reminder-policy.example.json`: optional personal reminder policy example / 可选的个人提醒策略示例。
 - `agents/openai.yaml`: Codex UI metadata and implicit invocation policy / Codex 界面元数据与自动调用策略。

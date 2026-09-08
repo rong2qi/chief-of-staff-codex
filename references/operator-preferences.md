@@ -53,14 +53,16 @@ python3 scripts/configure_preferences.py \
 ## Schema and behavior
 
 - `pin_governance`: global policy for scarce Chief pin slots. Its enabled form
-  registers exactly one `general_office`, `todo`, `creative_director`,
-  `context_migration_monitor`, and `testing_director`, each with a non-empty
-  exact thread ID. The Testing Director owns cross-project quality evidence but
-  is not a second operator-facing approval hub or an independent project writer. Public
-  presets are disabled and use generic titles with `thread_id: null`.
+  registers exactly one `general_office`, `todo`, `creative_director`, and
+  `context_migration_monitor`, each with a non-empty exact thread ID. The Testing
+  Director remains ordinary/default-unpinned and occupies no optional product
+  slot; it owns cross-project quality evidence but is not a second operator-facing
+  approval hub or an independent project writer. Public presets are disabled and
+  use generic titles with `thread_id: null`.
 - Chief title invariant: every durable Chief title starts with `Chief of ` except
-  the configured `general_office` and `todo` roles. Mandatory core-role titles
-  are validated accordingly; non-Chief durable roles retain `Role｜Work outcome`.
+  the configured `general_office` and `todo` tasks. The context migration monitor
+  is a registered non-Chief system role and keeps its system title. Other non-Chief
+  durable roles retain `Role｜Work outcome`.
 - `pin_governance.optional_chief_slots`: defaults to limit `6`, ordinary
   `default_pin_primary_task: false`, `recommend_then_operator_approve`, manual
   non-Chief pin protection, and `observed_capacity_then_paired_replacement`.
@@ -99,21 +101,33 @@ field, so repeated migration is idempotent.
   handoff.
 - `governance_model.enabled`: enables `chair_led_cabinet`; the operator becomes
   the chair, project Chiefs own routine administration, auditors are evidence-only,
-  non-visual exceptions route through the configured general office, and only the
-  general office plus Creative Director are authoritative TODO sources.
+  new non-visual exceptions route through the configured general office, and only the
+  general office plus Creative Director are authoritative TODO sources. An already-approved
+  nonvisual decision may relay once to its registered source Chief with a mandatory,
+  nonblocking General Office audit; it never turns delivery into execution.
 - `governance_model.continuation_policy.enabled`: requires project Chiefs to
   execute the strongest evidence-backed safe in-scope continuation. Stopping,
   preserving a failed state, and delaying remain operator-initiated choices while
   such a path exists. Only a continuation that itself needs a new permission or
   a new Chief is escalated; all protected-action and safety boundaries remain.
-- `project_start_capability_discovery.enabled`: requires a broad project-start
-  capability scan and a stack-specific confirmation before production. It covers
-  built-in/installed capabilities, available Codex plugins and Skills, official
-  documentation, maintained open-source projects, and reusable external
-  configuration patterns. Discovery is coverage-first rather than token/time
-  minimizing, while selection, installation, payment, permissions, and other
-  protected actions retain their evidence and approval boundaries. Test-related
-  findings require Testing Director review.
+- `governance_model.continuation_policy.recommended_action_delegation`: absent
+  or disabled preserves the prior routing. When enabled, the general office may
+  standing-delegate only one evidence-complete, fixed-surface, nonproduction
+  action from the exact allowlist. It records the stable audit marker, suppresses
+  an operator TODO, honors prior explicit denial, and stops on failure or drift.
+- `project_start_capability_discovery.enabled`: the key is retained for schema
+  version 1. A legacy section without lifecycle fields keeps the original broad
+  startup scan plus pre-production stack confirmation. A full lifecycle section
+  must use `scope=all_registered_chiefs`, `trigger_policy=key_events`, the exact
+  six triggers, `max_parallel_scans=2`, and
+  `acquisition_policy=discover_and_recommend_only`. It applies immediately only
+  to active unfinished responsibilities; paused work waits for resume and
+  completed/archived work is excluded. Each trigger yields at most one deduped
+  material recommendation pack with three candidates. No-result, all-reject,
+  and routine scans remain internal. Partial lifecycle fields fail validation.
+  The full evidence and search-surface contract is in
+  `capability-discovery-governance.md`; testing candidates go first to the
+  Testing Director and visual direction stays with the Creative Director.
 - `visual_selection_gate.enabled`: require clickable, non-final previews and an
   explicit operator choice before final visual implementation. `review_hub_title`
   identifies the one operator-facing Creative Director task; project Chiefs must

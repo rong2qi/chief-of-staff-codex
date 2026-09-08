@@ -32,7 +32,7 @@ Meeting permission: enabled | disabled; max participants: <n>
 - Low risk, clear acceptance, one write surface: one task and one relevant check.
 - Medium risk or uncertain cross-file work: read-only scout → sole implementer → read-only verifier.
 - High risk, public interface, migration, security, data, or unresolved design: read-only arbiter → sole implementer → independent read-only review.
-- At most three active stages. At most two proposal/objection rounds. One concrete defect permits one repair and one re-check.
+- At most three active stages. At most two proposal/objection rounds. The initial independent verification does not consume a repair cycle; one concrete defect permits up to three focused repair-and-independent-recheck cycles. A stricter or already-consumed contract prevails.
 
 Use Luna for read-only exploration and routine verification, Terra for the sole implementation writer, and Sol for high-risk arbitration or review. Runtime availability and the user's explicit model choice override this default.
 
@@ -50,11 +50,17 @@ While the project is unfinished, keep an active or queued phase task unless the 
 
 When the projected continuation policy is `advance_best_safe_in_scope_path`, select and execute the strongest evidence-backed safe in-scope continuation without opening an operator choice. Do not offer stopping, preserving a failed state, or delaying as peer options while such a path exists. Escalate only when continuing itself requires a new permission or a new Chief. Ordinary failure remains Chief-owned while a bounded diagnostic, repair, or verification path remains. The policy does not authorize production before the product gate, protected actions, bypassed visual selection, concealed safety evidence, transferred ownership, or expanded goals.
 
+## Project path portability
+
+Apply [project-path-portability.md](project-path-portability.md) before assigning active read/write paths. Resolve an optional project-specific environment override, then the Git root, then project markers upward from the script or configuration, and finally the current project directory. The override is never required. Store a stable `root_id` and project-relative POSIX paths; reject absolute project inputs, parent traversal, and symlink escape.
+
+Register an external tool or material by exact identity, path, permissions, and authorization for that intake; it cannot silently become the project root. Preserve historical absolute-path evidence unchanged and exclude it from active root resolution. A portable derivative receives a new hash and a `derived_from` link. Do not claim an existing business project is portable until its exact candidate passes the applicable Testing gate.
+
 ## Durable task naming and state
 
 Ordinary Chiefs default to unpinned. Only a mandatory core or operator-approved optional lineage inherits a pin. For its migration or takeover, apply [pin-inheritance-governance.md](pin-inheritance-governance.md): before final `MIGRATION_READY`, authority changes, or predecessor archival, require bundle parity, live automation parity, and applicable pin parity, then independently call `list_threads` and require the successor's exact task ID in `pinnedThreads`. A pin operation receipt is not proof; failed verification cannot transfer control. An ordinary unapproved Chief's unpinned state is not a failure and never creates a replacement.
 
-Title every durable Chief task `Chief of <domain or project>｜<optional local-language label>`. The exact `Chief of ` prefix is mandatory; only the registered global general-office and TODO roles are exceptions. A user-supplied Chinese or informal Chief name belongs after `｜` and does not waive the prefix. Title non-Chief durable child tasks `职务｜工作内容`, for example `技术负责人｜支付架构决策`.
+Title every durable Chief task `Chief of <domain or project>｜<optional local-language label>`. The exact `Chief of ` prefix is mandatory; only the registered global general-office and TODO tasks are Chief-title exceptions. The context migration monitor is a registered non-Chief system role and keeps its system title. A user-supplied Chinese or informal Chief name belongs after `｜` and does not waive the prefix. Title other non-Chief durable child tasks `职务｜工作内容`, for example `技术负责人｜支付架构决策`.
 
 Resolve the Chief's saved Codex `projectId` before creation and use the same project target for every durable child. Verify and record the child's `project_id`. If no saved project is available, use temporary subagents; ask the user to select or save a project before creating a durable child. Do not silently leave durable tasks projectless.
 
@@ -63,6 +69,19 @@ Add a registry entry as soon as creation succeeds. Update it when status, owners
 Depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role. A phase lead may create depth-3 durable tasks only when its delegated contract explicitly authorizes task creation. Temporary subagents at depth 3 are bounded helpers and cannot create durable roles. Depth 4 or deeper requires a pending `depth_expansion` request and explicit user approval before creation. The Chief remains the sole writer of central project state.
 
 For every active phase, monitor all known task IDs with bounded waits. When one task completes, fails, or needs attention, immediately snapshot all active task IDs, then update the registry and phase plan from the complete result set. This prevents the first event from hiding simultaneous progress and ensures an idle phase is either advanced, blocked with evidence, or escalated with an exact decision.
+
+For an explicitly strict-adopted delivery ledger, perform that same complete
+sweep on every active turn, cold start, and authorized heartbeat: retain opaque
+cursors, collect all unseen child results, and reconcile the Chief-owned local
+ledger as described in [delivery-ledger.md](delivery-ledger.md). Record only
+readable retained transport/ACK/review evidence. Reconciliation yields a
+per-report intent; it is neither a host wake-up nor authority to approve,
+dispatch, or replay. A temporary native sender may provide transport evidence,
+but the durable `return_to` Chief remains the recorded receiver. Empty native
+observations remain `OBSERVATION_GAP`; choose a bounded safe next action only
+when already authorized, otherwise record the precise blocker. Repair budget
+consumption requires the stored stricter contract, a stable reviewer identity,
+and a new review event for each independent result.
 
 Active durable children may appear in Recents as independently resumable tasks. Keep them visible while queued, running, failed, or needing attention. After a final handoff has been approved by the configured review route and no retry or dependent follow-up remains, archive the child and mark its registry status `archived`. Under `exception_only`, the Chief may approve a routine child handoff; final project completion still belongs to the operator. Preserve identifiers, cursor, evidence, and summary; archiving is reversible and is not deletion.
 
@@ -103,7 +122,7 @@ The child task must:
 3. State `review_route: chief` for routine evidence review or `review_route: operator` with one exact exception category and evidence. A child may propose but cannot self-authorize the route; the Chief verifies it.
 4. Under `exception_only`, end routine handoffs with `CHIEF_REVIEW_READY: <request_id>` and do not open a human-attention request. For a verified exception, use the host's blocking input mechanism or `USER_ACTION_REQUIRED: <request_id>`. Under `all_reports`, use the blocking mechanism or legacy `REVIEW_REQUIRED: <request_id>`.
 
-Under enabled `chair_led_cabinet`, replace the direct non-visual `USER_ACTION_REQUIRED` in step 4 with `CHAIR_BRIEF_READY: <request_id>` addressed to the general office. Only the general office can turn it into an operator-facing request. Visual requests follow the Creative Director route instead.
+For a new nonvisual exception under enabled `chair_led_cabinet`, use `CHAIR_BRIEF_READY: <request_id>` to the General Office. Once an operator decision is already approved, relay its stable ID and exact original wording directly to the registered source Chief exactly once and record a mandatory asynchronous General Office audit. That transport/ACK does not execute work or prove Testing. Visual requests and decisions follow the Creative Director route instead.
 
 The Chief owns `.chief-of-staff/approval-queue.json`; children never write it. When any watched task completes or needs attention, snapshot all active tasks with a zero-timeout wait before processing results. Insert every unseen report into the queue with `reviewer`, `review_route`, decision basis, and evidence references. This sweep-and-deduplicate rule prevents simultaneous reports from being lost when only one task wakes the wait.
 

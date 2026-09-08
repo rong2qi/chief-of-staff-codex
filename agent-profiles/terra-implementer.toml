@@ -1,0 +1,5 @@
+model = "gpt-5.6-terra"
+reasoning_effort = "medium"
+max_turns = 1
+write_access = true
+task_types = ["implementation", "debugging", "refactoring", "test_fix"]

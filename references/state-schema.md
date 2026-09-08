@@ -43,7 +43,7 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `subagent_meetings_enabled`: boolean; permits durable roles to convene bounded temporary-agent meetings.
 - `max_meeting_participants`: positive integer; maximum temporary participants per meeting, default `3`.
 - `control_plane`: `native` for the Codex-native implementation.
-- `task_title_pattern`: non-Chief durable-role naming convention. Durable Chiefs use `Chief of <domain or project>｜<optional local-language label>`; only the registered global general office and TODO may omit the prefix.
+- `task_title_pattern`: non-Chief durable-role naming convention. Durable Chiefs use `Chief of <domain or project>｜<optional local-language label>`; the registered general office and TODO may omit the prefix, and the context migration monitor is a registered non-Chief system role that keeps its system title.
 - `approval_required`: actions that always require explicit user authorization.
 
 ## pin-state.json
@@ -88,6 +88,7 @@ This mutable file is the single source of truth for project classification and t
 - `confirmed_at` and `current_phase_id` are strings or `null`.
 - Each phase contains a unique `phase_id`, title, objective, status, `phase_class`, acceptance criteria, task IDs, and result summary. `phase_class` is `goal_discovery`, `product_discovery`, `production`, `coordination`, or migration-allowlisted `legacy_existing`.
 - `completed` is valid only for a confirmed goal with at least one acceptance criterion and non-empty evidence on every verified criterion.
+- Optional `execution_packages`: non-empty `CHIEF_EXECUTION_PACKAGE_V1` records. Each binds an approved queue `approval_id`, unique package/work IDs, exact project/root/branch and writer, `local_delivered` endpoint, finite local permissions/resources, acceptance, and stop conditions. Its absence preserves legacy behavior.
 
 ## task-registry.json
 
@@ -95,6 +96,7 @@ This mutable file is the single source of truth for project classification and t
 - `tasks`: array of durable task records.
 - Each task record requires `task_id`, `title`, `role`, `objective`, `status`, and `work_class` strings; `host_id`, `project_id`, `last_cursor`, `result_summary`, `parent_task_id`, and `phase_id` are strings or `null`; `management_depth` is a positive integer; `write_surface`, `depends_on`, and `coordination_with` are arrays of task-ID strings. `work_class` is `goal_discovery`, `product_discovery`, `production_execution`, `coordination_only`, or migration-allowlisted `legacy_existing`.
 - Unknown additional keys must be preserved so a future adapter can extend the format.
+- A task adopting a package adds `execution_work_id` and `execution_package_id`; both must bind exactly one plan package and its writer/project identity.
 
 ## approval-queue.json
 
@@ -105,6 +107,7 @@ This mutable file is the single source of truth for project classification and t
 - `report_type` is `progress` or `final` for `report_review` and `null` otherwise; `status` is `pending`, `approved`, `changes_requested`, or `superseded`.
 - `request_id` is the deduplication key. Never insert a second record for the same ID; update the existing record after a decision.
 - A `report_review` may include `review_route` (`chief` or `operator`), `reviewer`, `reviewed_at`, `decision_basis`, `evidence_refs`, and `human_gate_reason`. Under `exception_only`, a Chief-approved routine report is stored directly as `approved`; only an enumerated exception remains `pending` for the operator.
+- An execution package's `approval_id` must name an existing `approved` queue record. The queue remains the only approval record; packages do not create a scheduler or permission engine.
 
 Write updates atomically when scripting: write valid JSON to a sibling temporary file and replace the original. Do not erase an existing task or approval record merely because the corresponding task is unavailable in a single status query.
 

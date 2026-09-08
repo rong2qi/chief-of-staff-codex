@@ -1,6 +1,8 @@
 {
   "schema_version": 1,
   "project_name": "{{PROJECT_NAME_JSON}}",
+  "agent_os_mode": "required",
+  "agent_os_manifest": ".agent-os/manifest.json",
   "primary_task_title": "Chief of {{PROJECT_NAME_JSON}}",
   "pin_primary_task": false,
   "report_review_mode": "exception_only",
@@ -13,7 +15,9 @@
   "partial_pause_policy": "project",
   "operator_escalation_policy": "direct",
   "continuation_policy": "standard",
+  "autonomy_policy_enabled": false,
   "ordinary_failure_policy": "bounded_repair_cycle",
+  "max_repair_cycles": 3,
   "continuation_escalation_policy": "existing_approval_boundaries",
   "require_goal_confirmation": true,
   "project_classification_policy": "classify_after_goal_confirmation",

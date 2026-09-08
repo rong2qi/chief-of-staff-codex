@@ -38,7 +38,7 @@ Visual decisions replace the final two hops with:
 
 `project Chief -> Creative Director -> chair`
 
-Routine child handoffs end with `CHIEF_REVIEW_READY`. A project Chief may approve or return them after evidence review. A non-visual exception ends with `CHAIR_BRIEF_READY` to the general office; only the general office emits `USER_ACTION_REQUIRED`. A visual packet remains awaiting the operator only in the Creative Director task.
+Routine child handoffs end with `CHIEF_REVIEW_READY`. A project Chief may approve or return them after evidence review. A new non-visual exception ends with `CHAIR_BRIEF_READY` to the general office; only the general office emits the first `USER_ACTION_REQUIRED`. After approval, the immutable decision ID and exact operator words relay once to the source Chief and the General Office records a mandatory asynchronous audit. The relay is nonblocking and is not execution, authority expansion, or Testing evidence. A visual packet remains awaiting the operator only in the Creative Director task.
 
 Emergency bypass is permitted only when evidence shows that the Chief is violating a safety boundary, concealing a protected-action risk, or is itself party to an unresolved write-ownership conflict. The bypass contains facts and evidence only; it grants no authority.
 
@@ -61,6 +61,8 @@ The general office deduplicates non-visual briefs. The Creative Director dedupli
 An unresolved decision freezes only the affected write surface or dependency lane. The project Chief must continue any safe, independent lane and record which surfaces are frozen and which remain active. The whole project may enter `awaiting_user` only when no independent safe lane remains. Explicitly paused projects remain paused until the operator resumes them.
 
 When the validated profile also enables `governance_model.continuation_policy`, the Chief must choose the strongest evidence-backed safe in-scope continuation and execute it without opening a chair decision. Stopping, preserving a failed state, and delaying are operator-initiated choices, not peer options while safe continuation exists. Escalate only when continuing itself requires a new permission or creation of a new Chief. An ordinary failure remains Chief-owned while another bounded diagnostic, repair, or verification path exists.
+
+When the nested `recommended_action_delegation` policy is enabled, the general office standing-delegates a single evidence-complete, fixed-surface, nonproduction allowlisted recommendation and records `DELEGATED_RECOMMENDATION_EXECUTED: <stable_id>`. It returns the marker to the source Chief and creates no operator request or TODO entry. Prior explicit denial and every operator-only power remain controlling; ambiguity, incomplete evidence, safety dissent, failure, or drift stops delegation. Read [recommended-action-delegation.md](recommended-action-delegation.md) for the exact allowlist and evidence contract.
 
 This continuation rule is subordinate to the confirmed goal, write ownership, protected-action approvals, the Creative Director visual gate, and safety/security disclosure. A path that violates any of those boundaries is not safe or already authorized.
 

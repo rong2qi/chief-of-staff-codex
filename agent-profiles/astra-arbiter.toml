@@ -1,0 +1,5 @@
+model = "gpt-6-astra"
+reasoning_effort = "medium"
+max_turns = 2
+write_access = false
+task_types = ["complex_architecture", "cross_module_debugging", "conflict_resolution", "acceptance_scope"]

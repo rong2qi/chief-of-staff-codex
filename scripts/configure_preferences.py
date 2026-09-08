@@ -12,6 +12,7 @@ from preference_lib import (
     PreferenceError,
     SKILL_ROOT,
     atomic_write_json,
+    lifecycle_capability_discovery,
     managed_agents_block,
     preset_profile,
     read_json,
@@ -44,6 +45,34 @@ def build_profile(args: argparse.Namespace) -> dict:
         profile["reminders"]["enabled"] = True
     if args.disable_reminders:
         profile["reminders"]["enabled"] = False
+
+    if (
+        args.enable_recommended_action_delegation
+        or args.disable_recommended_action_delegation
+    ):
+        continuation = profile["governance_model"]["continuation_policy"]
+        section = continuation.setdefault(
+            "recommended_action_delegation",
+            preset_profile("core")["governance_model"]["continuation_policy"][
+                "recommended_action_delegation"
+            ],
+        )
+        section["enabled"] = bool(args.enable_recommended_action_delegation)
+
+    if args.enable_autonomy_policy:
+        continuation = profile["governance_model"]["continuation_policy"]
+        section = continuation.setdefault("autonomy_policy", {})
+        section.update({
+            "schema": "CHIEF_AUTONOMY_POLICY_V1", "enabled": True,
+            "approval_package_required": True, "operation_revalidation_required": True,
+            "ordinary_repair_cycles": 3,
+            "protected_actions": ["new_permission", "real_data", "credentials_or_secrets", "production", "release_or_deploy", "payment", "external_send", "security_rejection"],
+        })
+
+    if args.enable_lifecycle_capability_discovery:
+        profile["project_start_capability_discovery"] = (
+            lifecycle_capability_discovery(enabled=True)
+        )
 
     if args.audio_provider:
         profile["audio_playback"]["provider"] = args.audio_provider
@@ -112,6 +141,21 @@ def main() -> int:
     reminder = parser.add_mutually_exclusive_group()
     reminder.add_argument("--enable-reminders", action="store_true")
     reminder.add_argument("--disable-reminders", action="store_true")
+    delegation = parser.add_mutually_exclusive_group()
+    delegation.add_argument(
+        "--enable-recommended-action-delegation", action="store_true"
+    )
+    parser.add_argument(
+        "--enable-autonomy-policy", action="store_true",
+        help="Enable approved-package autonomy while retaining protected-action gates",
+    )
+    delegation.add_argument(
+        "--disable-recommended-action-delegation", action="store_true"
+    )
+    parser.add_argument(
+        "--enable-lifecycle-capability-discovery", action="store_true",
+        help="Enable all-Chief key-event discovery in recommend-only mode",
+    )
     parser.add_argument("--voice", help="Preferred installed en-US system voice")
     parser.add_argument(
         "--audio-provider",

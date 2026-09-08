@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -36,10 +38,9 @@ CLIP_KINDS = {"written", "spoken"}
 TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 PIN_CORE_ROLES = {
     "general_office", "todo", "creative_director", "context_migration_monitor",
-    "testing_director",
 }
 CHIEF_TITLE_PREFIX = "Chief of "
-CHIEF_TITLE_EXCEPTION_ROLES = {"general_office", "todo"}
+CHIEF_TITLE_EXCEPTION_ROLES = {"general_office", "todo", "context_migration_monitor"}
 PIN_CRITERIA = [
     "user_delivery_value", "imminent_material_decision", "delay_cost",
     "cross_project_dependency", "activity", "evidence_confidence", "sidebar_cost",
@@ -54,6 +55,51 @@ AUTOMATION_BUNDLE_FIELDS = [
 ]
 AUTOMATION_REBIND_BEFORE = ["takeover", "authority_switch", "predecessor_archive"]
 AUTOMATION_PRESERVE = ["schedule", "prompt_semantics", "notification_policy", "scope"]
+RECOMMENDED_ACTION_CLASSES = [
+    "exact_task_owned_temp_cleanup",
+    "metadata_only_allowlisted_read",
+    "fixed_sha256_one_shot_nonproduction_execution",
+    "disposable_local_test_stop_rollback",
+    "bounded_repair_recheck_without_scope_expansion",
+]
+RECOMMENDED_ACTION_CONDITIONS = [
+    "single_clear_recommendation",
+    "evidence_complete",
+    "exact_identity_and_surface",
+    "independent_verification_when_applicable",
+    "no_unresolved_safety_dissent",
+    "nonproduction",
+    "no_real_customer_or_personal_data",
+    "no_credentials_or_secrets",
+    "stop_and_rollback_defined",
+]
+RECOMMENDED_OPERATOR_ONLY_ACTIONS = [
+    "final_goal_or_material_product_direction",
+    "visual_selection",
+    "final_acceptance_or_termination",
+    "chief_appoint_pause_remove_pin_or_replace",
+    "payment_or_purchase",
+    "release_deploy_production_or_rollback",
+    "external_communication_new_collaborator_or_public_visibility",
+    "credentials_secrets_real_identity_or_sensitive_data",
+    "legal_privacy_or_material_security_risk_acceptance",
+    "real_user_or_production_data_deletion",
+    "recursive_broad_or_irreversible_deletion",
+    "write_ownership_conflict",
+    "failed_or_unverifiable_after_allowed_repair_recheck",
+    "override_prior_explicit_operator_denial",
+]
+AUTONOMY_POLICY_EXACT = {
+    "schema": "CHIEF_AUTONOMY_POLICY_V1",
+    "enabled": False,
+    "approval_package_required": True,
+    "operation_revalidation_required": True,
+    "ordinary_repair_cycles": 3,
+    "protected_actions": [
+        "new_permission", "real_data", "credentials_or_secrets", "production",
+        "release_or_deploy", "payment", "external_send", "security_rejection",
+    ],
+}
 CAPABILITY_DISCOVERY_SURFACES = [
     "host_and_installed_capabilities", "codex_plugins", "codex_skills",
     "official_documentation", "open_source_projects",
@@ -63,6 +109,55 @@ CAPABILITY_DISCOVERY_CRITERIA = [
     "project_fit", "productivity_gain", "maintenance_activity", "license",
     "supply_chain_risk", "permission_impact", "integration_impact", "overlap",
 ]
+CAPABILITY_DISCOVERY_TRIGGERS = [
+    "project_start", "phase_or_stack_change", "repeated_manual_work",
+    "blocker_or_failure", "before_custom_build", "before_production_execution",
+]
+CAPABILITY_DISCOVERY_LIFECYCLE_SURFACES = CAPABILITY_DISCOVERY_SURFACES + [
+    "apps_connectors_mcp",
+    "official_api_sdk_cli_framework_library",
+    "maintained_oss_templates_starters_reference_implementations_design_systems",
+    "host_project_runtimes_emulators_browsers_scripts_caches_builds",
+    "containers_devcontainers_disposable_vms",
+    "compliant_datasets_model_assets_eval_sets_prompt_libraries",
+    "testing_eval_security_performance_reliability_observability",
+    "ci_configuration_runbooks_sops_architecture_patterns",
+    "saas_managed_cloud_research_only",
+    "experts_maintainers_service_providers_discover_only_no_contact",
+]
+CAPABILITY_DISCOVERY_EVIDENCE = [
+    "source", "fixed_version_or_revision", "fit", "benefit", "maintenance",
+    "license", "supply_chain", "permissions", "privacy", "secrets", "cost",
+    "integration_lifecycle", "overlap", "exit_removal_path",
+]
+CAPABILITY_DISCOVERY_PROHIBITED_ACTIONS = [
+    "install", "pull", "download", "enable", "connect_account",
+    "add_dependency", "payment", "contact_external", "external_send",
+    "production_execution", "production_use", "project_mutation",
+]
+CAPABILITY_DISCOVERY_LIFECYCLE_EXACT = {
+    "scope": "all_registered_chiefs",
+    "trigger_policy": "key_events",
+    "triggers": CAPABILITY_DISCOVERY_TRIGGERS,
+    "acquisition_policy": "discover_and_recommend_only",
+    "reporting_policy": "material_recommendations_only",
+    "rollout_policy": "active_unfinished_immediate",
+    "max_parallel_scans": 2,
+    "paused_project_policy": "defer_until_resume",
+    "max_candidates_per_trigger": 3,
+    "dedupe_policy": "one_pack_per_chief_trigger",
+    "serious_candidate_evidence": CAPABILITY_DISCOVERY_EVIDENCE,
+    "prohibited_actions": CAPABILITY_DISCOVERY_PROHIBITED_ACTIONS,
+    "default_adoption_scope": "project_local",
+    "no_result_policy": "internal_evidence_only",
+    "completed_archived_policy": "exclude",
+    "testing_candidate_route": "testing_director_first",
+    "visual_direction_route": "creative_director",
+    "material_recommendation_route": "general_office",
+}
+CAPABILITY_DISCOVERY_LIFECYCLE_ONLY_KEYS = set(
+    CAPABILITY_DISCOVERY_LIFECYCLE_EXACT
+) - {"acquisition_policy"}
 
 
 class PreferenceError(ValueError):
@@ -153,7 +248,7 @@ def _validate_pin_governance(profile: dict[str, Any], errors: list[str]) -> None
         ):
             errors.append(
                 f"{label}.title must start with {CHIEF_TITLE_PREFIX!r}; "
-                "only general_office and todo are exceptions"
+                "only general_office, todo, and the non-Chief context monitor are exceptions"
             )
         thread_id = item.get("thread_id")
         if thread_id is not None and (not isinstance(thread_id, str) or not thread_id):
@@ -312,7 +407,7 @@ def _validate_capability_discovery(profile: dict[str, Any], errors: list[str]) -
     _require_bool(
         section, "enabled", "project_start_capability_discovery", errors
     )
-    exact = {
+    legacy_exact = {
         "mode": "coverage_first",
         "timing": "before_production_execution",
         "search_surfaces": CAPABILITY_DISCOVERY_SURFACES,
@@ -324,9 +419,288 @@ def _validate_capability_discovery(profile: dict[str, Any], errors: list[str]) -
         "cost_policy": "coverage_over_token_or_time_savings",
         "protected_actions": "separate_explicit_approval",
     }
+    lifecycle_mode = bool(
+        CAPABILITY_DISCOVERY_LIFECYCLE_ONLY_KEYS.intersection(section)
+    )
+    exact = dict(legacy_exact)
+    if lifecycle_mode:
+        exact.update(CAPABILITY_DISCOVERY_LIFECYCLE_EXACT)
+        exact["search_surfaces"] = CAPABILITY_DISCOVERY_LIFECYCLE_SURFACES
     for key, value in exact.items():
         if section.get(key) != value:
             errors.append(f"project_start_capability_discovery.{key} is invalid")
+
+
+def lifecycle_capability_discovery(enabled: bool = True) -> dict[str, Any]:
+    """Return the complete lifecycle contract without mutating a legacy preset."""
+    return {
+        "enabled": enabled,
+        "mode": "coverage_first",
+        "timing": "before_production_execution",
+        "search_surfaces": copy.deepcopy(CAPABILITY_DISCOVERY_LIFECYCLE_SURFACES),
+        "evaluation_criteria": copy.deepcopy(CAPABILITY_DISCOVERY_CRITERIA),
+        "require_evidence_pack": True,
+        "require_reuse_before_build": True,
+        "testing_director_review": "required_for_test_capabilities",
+        "cost_policy": "coverage_over_token_or_time_savings",
+        "protected_actions": "separate_explicit_approval",
+        **copy.deepcopy(CAPABILITY_DISCOVERY_LIFECYCLE_EXACT),
+    }
+
+
+def capability_recommendation_pack_id(
+    chief_id: str, trigger: str, evidence_identity: str
+) -> str:
+    """Bind a packet identity to its Chief, trigger, and frozen evidence."""
+    for label, value in (
+        ("chief_id", chief_id),
+        ("trigger", trigger),
+        ("evidence_identity", evidence_identity),
+    ):
+        if not isinstance(value, str) or not value.strip():
+            raise PreferenceError(f"{label} must be a non-empty string")
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_identity.strip()):
+        raise PreferenceError("evidence_identity must be a fixed sha256 identity")
+    material = json.dumps(
+        [chief_id.strip(), trigger.strip(), evidence_identity.strip()],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"capability:{hashlib.sha256(material).hexdigest()}"
+
+
+def _meaningful_capability_evidence(key: str, value: Any) -> bool:
+    if value is None or isinstance(value, bool):
+        return False
+    if isinstance(value, str):
+        normalized = value.strip()
+        meaningful = bool(normalized) and normalized.lower() not in {
+            "unknown", "n/a", "na", "none", "null", "tbd", "todo", "false",
+        }
+        if key == "source":
+            return meaningful and (
+                "://" in normalized or normalized.startswith("git@")
+            )
+        return meaningful
+    if key in {"source", "fixed_version_or_revision"}:
+        return False
+    if isinstance(value, int):
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, list):
+        return bool(value) and all(
+            _meaningful_capability_evidence(key, item) for item in value
+        )
+    if isinstance(value, dict):
+        return bool(value) and all(
+            isinstance(item_key, str)
+            and bool(item_key.strip())
+            and _meaningful_capability_evidence(key, item_value)
+            for item_key, item_value in value.items()
+        )
+    return False
+
+
+def evaluate_capability_discovery(
+    profile: dict[str, Any], event: dict[str, Any]
+) -> dict[str, Any]:
+    """Evaluate one discovery trigger without acquiring or mutating anything."""
+    errors = validate_preferences(profile)
+    if errors:
+        return {
+            "status": "invalid_profile", "errors": errors,
+            "mutation_performed": False, "operator_actionable_now": False,
+        }
+    if event.get("prior_operator_denial") is True:
+        return {
+            "status": "blocked", "reason": "prior_operator_denial",
+            "mutation_performed": False, "operator_actionable_now": False,
+        }
+    section = profile.get("project_start_capability_discovery")
+    if not isinstance(section, dict) or section.get("enabled") is not True:
+        return {
+            "status": "disabled", "mutation_performed": False,
+            "operator_actionable_now": False,
+        }
+
+    lifecycle_mode = bool(
+        CAPABILITY_DISCOVERY_LIFECYCLE_ONLY_KEYS.intersection(section)
+    )
+    lifecycle_status = event.get("lifecycle_status")
+    if lifecycle_mode and lifecycle_status is None:
+        return {
+            "status": "evidence_required", "missing": ["lifecycle_status"],
+            "mutation_performed": False, "operator_actionable_now": False,
+        }
+    if not lifecycle_mode and lifecycle_status is None:
+        lifecycle_status = "active"
+    if lifecycle_status in {"completed", "archived"}:
+        return {
+            "status": "excluded", "reason": lifecycle_status,
+            "mutation_performed": False, "operator_actionable_now": False,
+        }
+    if lifecycle_status == "paused":
+        return {
+            "status": "deferred", "reason": "paused_until_resume",
+            "mutation_performed": False, "operator_actionable_now": False,
+        }
+    if lifecycle_mode and lifecycle_status not in {"active", "unfinished"}:
+        return {
+            "status": "not_applicable", "reason": "invalid_lifecycle_status",
+            "mutation_performed": False, "operator_actionable_now": False,
+        }
+    if lifecycle_mode and event.get("chief_registered") is not True:
+        return {
+            "status": "not_applicable", "reason": "unregistered_chief",
+            "mutation_performed": False, "operator_actionable_now": False,
+        }
+
+    trigger = event.get("trigger")
+    due_triggers = (
+        CAPABILITY_DISCOVERY_TRIGGERS
+        if lifecycle_mode
+        else ["project_start", "before_production_execution"]
+    )
+    if trigger not in due_triggers:
+        return {
+            "status": "not_due",
+            "mode": "lifecycle" if lifecycle_mode else "legacy_startup",
+            "mutation_performed": False,
+            "operator_actionable_now": False,
+        }
+    requested_action = event.get("requested_action")
+    if lifecycle_mode and requested_action in CAPABILITY_DISCOVERY_PROHIBITED_ACTIONS:
+        return {
+            "status": "blocked",
+            "reason": f"discover_only_forbids_{requested_action}",
+            "operator_approval_required": True,
+            "mutation_performed": False,
+            "operator_actionable_now": False,
+        }
+    return {
+        "status": "discovery_due",
+        "mode": "lifecycle" if lifecycle_mode else "legacy_startup",
+        "trigger": trigger,
+        "acquisition_policy": section["acquisition_policy"],
+        "max_parallel_scans": section.get("max_parallel_scans", 1),
+        "allowed_actions": ["discover", "evaluate", "recommend"],
+        "mutation_performed": False,
+        "operator_actionable_now": False,
+    }
+
+
+def route_capability_recommendations(
+    profile: dict[str, Any], packet: dict[str, Any]
+) -> dict[str, Any]:
+    """Deduplicate and route a lifecycle recommendation packet without a TODO write."""
+    event_result = evaluate_capability_discovery(profile, packet)
+    if event_result.get("status") != "discovery_due":
+        return {**event_result, "operator_actionable_now": False}
+    if event_result.get("mode") != "lifecycle":
+        return {
+            **event_result,
+            "status": "legacy_evidence_only",
+            "operator_actionable_now": False,
+        }
+    try:
+        expected_pack_id = capability_recommendation_pack_id(
+            packet.get("chief_id"), packet.get("trigger"),
+            packet.get("evidence_identity"),
+        )
+    except PreferenceError:
+        return {
+            "status": "evidence_required",
+            "missing": ["chief_id", "trigger", "evidence_identity"],
+            "mutation_performed": False, "operator_actionable_now": False,
+        }
+    pack_id = packet.get("pack_id")
+    if pack_id != expected_pack_id:
+        return {
+            "status": "evidence_required", "missing": ["bound_pack_id"],
+            "expected_pack_id": expected_pack_id,
+            "mutation_performed": False, "operator_actionable_now": False,
+        }
+    if pack_id in packet.get("existing_pack_ids", []):
+        return {"status": "duplicate_suppressed", "pack_id": pack_id, "mutation_performed": False, "operator_actionable_now": False}
+    if packet.get("routine_scan") is True:
+        return {"status": "internal_evidence_only", "reason": "routine_scan", "candidates": [], "mutation_performed": False, "operator_actionable_now": False}
+
+    candidates = packet.get("candidates", [])
+    if not isinstance(candidates, list):
+        return {"status": "evidence_required", "missing": ["candidates"], "mutation_performed": False, "operator_actionable_now": False}
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            rejected.append({"index": index, "reason": "candidate_not_object"})
+            continue
+        if candidate.get("decision") != "recommend" or candidate.get("material") is not True:
+            rejected.append({"index": index, "reason": "rejected_or_not_material"})
+            continue
+        missing = [
+            key for key in CAPABILITY_DISCOVERY_EVIDENCE
+            if key not in candidate
+            or not _meaningful_capability_evidence(key, candidate[key])
+        ]
+        if missing:
+            rejected.append({"index": index, "reason": "evidence_incomplete", "missing": missing})
+            continue
+        accepted.append(copy.deepcopy(candidate))
+    accepted = accepted[:3]
+    if not accepted:
+        return {
+            "status": "internal_evidence_only",
+            "pack_id": pack_id,
+            "candidates": [],
+            "rejected": rejected,
+            "operator_actionable_now": False,
+            "mutation_performed": False,
+        }
+    routes = []
+    for candidate in accepted:
+        if candidate.get("testing_related") is True:
+            routes.append("testing_director")
+        elif candidate.get("visual_direction") is True:
+            routes.append("creative_director")
+        else:
+            routes.append("general_office")
+    return {
+        "status": "material_recommendation_ready",
+        "pack_id": pack_id,
+        "candidates": accepted,
+        "routes": routes,
+        "operator_actionable_now": False,
+        "mutation_performed": False,
+    }
+
+
+def _validate_recommended_action_delegation(
+    continuation: dict[str, Any], errors: list[str]
+) -> None:
+    section = continuation.get("recommended_action_delegation")
+    if section is None:
+        return
+    if not isinstance(section, dict):
+        errors.append(
+            "governance_model.continuation_policy.recommended_action_delegation "
+            "must be an object"
+        )
+        return
+    label = "governance_model.continuation_policy.recommended_action_delegation"
+    _require_bool(section, "enabled", label, errors)
+    exact = {
+        "authority_owner": "general_office",
+        "decision_mode": "auto_authorize_single_recommended_bounded_action",
+        "eligible_action_classes": RECOMMENDED_ACTION_CLASSES,
+        "required_conditions": RECOMMENDED_ACTION_CONDITIONS,
+        "prior_operator_denial_policy": "requires_explicit_operator_override",
+        "audit_marker": "DELEGATED_RECOMMENDATION_EXECUTED",
+        "operator_only_actions": RECOMMENDED_OPERATOR_ONLY_ACTIONS,
+    }
+    for key, value in exact.items():
+        if section.get(key) != value:
+            errors.append(f"{label}.{key} is invalid")
 
 
 def validate_preferences(profile: dict[str, Any]) -> list[str]:
@@ -404,6 +778,25 @@ def validate_preferences(profile: dict[str, Any]) -> list[str]:
             "governance_model.continuation_policy.ordinary_failure_policy must be "
             "continue_bounded_diagnosis_repair_and_verification"
         )
+    _validate_recommended_action_delegation(continuation, errors)
+    autonomy = continuation.get("autonomy_policy")
+    if autonomy is not None:
+        if not isinstance(autonomy, dict):
+            errors.append("governance_model.continuation_policy.autonomy_policy must be an object")
+        else:
+            for key, expected in AUTONOMY_POLICY_EXACT.items():
+                if key == "enabled":
+                    _require_bool(autonomy, key, "governance_model.continuation_policy.autonomy_policy", errors)
+                elif key == "ordinary_repair_cycles":
+                    if type(autonomy.get(key)) is not int or autonomy.get(key) != expected:
+                        errors.append(f"governance_model.continuation_policy.autonomy_policy.{key} is invalid")
+                elif key in {"approval_package_required", "operation_revalidation_required"}:
+                    if type(autonomy.get(key)) is not bool or autonomy.get(key) is not expected:
+                        errors.append(f"governance_model.continuation_policy.autonomy_policy.{key} is invalid")
+                elif autonomy.get(key) != expected:
+                    errors.append(f"governance_model.continuation_policy.autonomy_policy.{key} is invalid")
+            if autonomy.get("enabled") is True and continuation.get("enabled") is not True:
+                errors.append("enabled autonomy_policy requires enabled continuation_policy")
 
     visual = _require_object(profile, "visual_selection_gate", errors)
     _require_bool(visual, "enabled", "visual_selection_gate", errors)
@@ -669,6 +1062,265 @@ def recommend_optional_chief_pins(
     return {"status": "capacity_full_no_safe_replacement", **base, "candidates": []}
 
 
+def evaluate_recommended_action(
+    profile: dict[str, Any], action: dict[str, Any]
+) -> dict[str, Any]:
+    """Evaluate standing delegation without executing or retrying an action."""
+    require_valid(profile)
+    continuation = profile["governance_model"]["continuation_policy"]
+    policy = continuation.get("recommended_action_delegation")
+    base = {
+        "delegated": False,
+        "operator_actionable_now": False,
+        "audit_marker": None,
+        "automatic_rerun": False,
+    }
+    if not isinstance(policy, dict) or policy.get("enabled") is not True:
+        return {"status": "disabled", **base}
+    if not isinstance(action, dict):
+        raise PreferenceError("recommended action must be an object")
+
+    stable_id = action.get("stable_id")
+    if not isinstance(stable_id, str) or not stable_id.strip():
+        return {"status": "evidence_required", "missing": ["stable_id"], **base}
+    state = action.get("execution_state", "ready")
+    if state in {"failed", "drifted", "out_of_scope"}:
+        return {"status": "stopped", "reason": state, **base}
+    if state != "ready":
+        raise PreferenceError("recommended action execution_state is invalid")
+
+    operator_only = action.get("operator_only_action")
+    if operator_only is not None and operator_only not in RECOMMENDED_OPERATOR_ONLY_ACTIONS:
+        raise PreferenceError("recommended action operator_only_action is invalid")
+
+    readiness_checks = {
+        "single_clear_recommendation": action.get("recommendation_count") == 1,
+        "evidence_complete": action.get("evidence_complete") is True,
+        "exact_identity_and_surface": action.get("exact_identity_and_surface") is True,
+        "independent_verification_when_applicable": (
+            action.get("independent_verification_when_applicable") is True
+        ),
+        "no_unresolved_safety_dissent": (
+            action.get("no_unresolved_safety_dissent") is True
+        ),
+        "stop_and_rollback_defined": action.get("stop_and_rollback_defined") is True,
+    }
+    readiness_missing = [key for key, passed in readiness_checks.items() if not passed]
+    if readiness_missing:
+        return {
+            "status": "evidence_required",
+            "missing": sorted(readiness_missing),
+            "reserved_action": operator_only,
+            **base,
+        }
+
+    reserved_reason = operator_only
+    if action.get("prior_operator_denial") is True:
+        reserved_reason = "override_prior_explicit_operator_denial"
+    for key, reason in (
+        ("nonproduction", "release_deploy_production_or_rollback"),
+        ("no_real_customer_or_personal_data", "real_user_or_production_data_deletion"),
+        ("no_credentials_or_secrets", "credentials_secrets_real_identity_or_sensitive_data"),
+    ):
+        if action.get(key) is False:
+            reserved_reason = reason
+    if action.get("external_send") is True:
+        reserved_reason = "external_communication_new_collaborator_or_public_visibility"
+    if action.get("recursive") is True or action.get("uses_glob") is True:
+        reserved_reason = "recursive_broad_or_irreversible_deletion"
+    if action.get("prior_operator_denial") is True:
+        reserved_reason = "override_prior_explicit_operator_denial"
+    if reserved_reason is not None:
+        return {
+            "status": "operator_only",
+            "reason": reserved_reason,
+            **base,
+            "operator_actionable_now": True,
+        }
+
+    action_class = action.get("action_class")
+    if action_class not in RECOMMENDED_ACTION_CLASSES:
+        return {
+            "status": "operator_only",
+            "reason": "ineligible_action_class",
+            **base,
+            "operator_actionable_now": True,
+        }
+
+    missing: list[str] = []
+    delegation_checks = {
+        "nonproduction": action.get("nonproduction") is True,
+        "no_real_customer_or_personal_data": (
+            action.get("no_real_customer_or_personal_data") is True
+        ),
+        "no_credentials_or_secrets": action.get("no_credentials_or_secrets") is True,
+        "no_external_send": action.get("external_send") is False,
+    }
+    missing.extend(key for key, passed in delegation_checks.items() if not passed)
+
+    if action_class == "exact_task_owned_temp_cleanup":
+        sha256 = action.get("sha256")
+        path = action.get("path")
+        checks = {
+            "absolute_exact_path": isinstance(path, str)
+            and bool(path)
+            and Path(path).is_absolute(),
+            "regular_file": action.get("file_type") == "regular_file",
+            "fresh_size": isinstance(action.get("size_bytes"), int)
+            and not isinstance(action.get("size_bytes"), bool)
+            and action.get("size_bytes") >= 0,
+            "fresh_sha256": isinstance(sha256, str)
+            and re.fullmatch(r"[0-9a-f]{64}", sha256) is not None,
+            "non_symlink": action.get("is_symlink") is False,
+            "no_symlink_follow": action.get("follow_symlinks") is False,
+            "no_glob": action.get("uses_glob") is False,
+            "non_recursive": action.get("recursive") is False,
+            "task_owned": action.get("task_owned") is True,
+            "temporary": action.get("temporary") is True,
+        }
+        missing.extend(key for key, passed in checks.items() if not passed)
+    elif action_class == "metadata_only_allowlisted_read":
+        allowlist = action.get("read_allowlist")
+        checks = {
+            "exact_target": isinstance(action.get("target"), str)
+            and bool(action.get("target")),
+            "fixed_read_allowlist": isinstance(allowlist, list)
+            and bool(allowlist)
+            and all(isinstance(item, str) and item for item in allowlist),
+            "positive_max_bytes": isinstance(action.get("max_bytes"), int)
+            and not isinstance(action.get("max_bytes"), bool)
+            and action.get("max_bytes") > 0,
+            "positive_timeout_seconds": isinstance(action.get("timeout_seconds"), int)
+            and not isinstance(action.get("timeout_seconds"), bool)
+            and action.get("timeout_seconds") > 0,
+            "read_only": action.get("read_only") is True,
+            "no_write": action.get("write_allowed") is False,
+            "empty_write_roots": action.get("write_roots") == [],
+            "tokens_not_persisted": action.get("tokens_persisted") is False,
+            "exact_stop_condition": isinstance(action.get("stop_condition"), str)
+            and bool(action.get("stop_condition")),
+            "class_independent_verification": (
+                action.get("class_independent_verification") is True
+            ),
+        }
+        missing.extend(key for key, passed in checks.items() if not passed)
+    elif action_class == "fixed_sha256_one_shot_nonproduction_execution":
+        sha256 = action.get("sha256")
+        io_allowlist = action.get("io_allowlist")
+        checks = {
+            "fixed_sha256": isinstance(sha256, str)
+            and re.fullmatch(r"[0-9a-f]{64}", sha256) is not None,
+            "one_shot": action.get("one_shot") is True,
+            "no_overwrite": action.get("overwrite") is False,
+            "io_allowlist": isinstance(io_allowlist, list)
+            and bool(io_allowlist)
+            and all(isinstance(item, str) and item for item in io_allowlist),
+            "not_previously_run": action.get("execution_count") == 0,
+            "no_automatic_rerun": action.get("automatic_rerun_requested") is False,
+        }
+        missing.extend(key for key, passed in checks.items() if not passed)
+    elif action_class == "disposable_local_test_stop_rollback":
+        target = action.get("disposable_target")
+        io_allowlist = action.get("io_allowlist")
+        rollback_steps = action.get("rollback_steps")
+        checks = {
+            "absolute_disposable_target": isinstance(target, str)
+            and bool(target)
+            and Path(target).is_absolute(),
+            "target_is_disposable": action.get("target_is_disposable") is True,
+            "fixed_io_allowlist": isinstance(io_allowlist, list)
+            and bool(io_allowlist)
+            and all(isinstance(item, str) and item for item in io_allowlist),
+            "positive_timeout_seconds": isinstance(action.get("timeout_seconds"), int)
+            and not isinstance(action.get("timeout_seconds"), bool)
+            and action.get("timeout_seconds") > 0,
+            "exact_stop_condition": isinstance(action.get("stop_condition"), str)
+            and bool(action.get("stop_condition")),
+            "rollback_steps": isinstance(rollback_steps, list)
+            and bool(rollback_steps)
+            and all(isinstance(item, str) and item for item in rollback_steps),
+            "single_run": action.get("max_runs") == 1,
+            "not_previously_run": action.get("execution_count") == 0,
+            "no_automatic_rerun": action.get("automatic_rerun_requested") is False,
+        }
+        missing.extend(key for key, passed in checks.items() if not passed)
+    elif action_class == "bounded_repair_recheck_without_scope_expansion":
+        write_surface = action.get("existing_write_surface")
+        candidate_sha256 = action.get("candidate_sha256")
+        checks = {
+            "frozen_candidate_sha256": isinstance(candidate_sha256, str)
+            and re.fullmatch(r"[0-9a-f]{64}", candidate_sha256) is not None,
+            "exact_repair_target": isinstance(action.get("repair_target"), str)
+            and bool(action.get("repair_target")),
+            "existing_write_owner": isinstance(action.get("existing_write_owner"), str)
+            and bool(action.get("existing_write_owner")),
+            "existing_write_surface": isinstance(write_surface, list)
+            and bool(write_surface)
+            and all(isinstance(item, str) and item for item in write_surface)
+            and len(write_surface) == len(set(write_surface)),
+            "unique_repair_surface": action.get("repair_surface_unique") is True,
+            "no_write_owner_conflict": action.get("write_owner_conflict") is False,
+            "no_scope_expansion": action.get("no_scope_expansion") is True,
+            "single_repair_attempt": action.get("max_repair_attempts") == 1,
+            "single_recheck": action.get("max_rechecks") == 1,
+            "repair_not_started": action.get("repair_attempts_completed") == 0,
+            "recheck_not_started": action.get("rechecks_completed") == 0,
+            "no_automatic_rerun": action.get("automatic_rerun_requested") is False,
+            "failure_stops": action.get("failure_stop") is True,
+        }
+        missing.extend(key for key, passed in checks.items() if not passed)
+    if missing:
+        return {"status": "evidence_required", "missing": sorted(set(missing)), **base}
+
+    marker = f"{policy['audit_marker']}: {stable_id}"
+    return {
+        "status": "delegated",
+        **base,
+        "delegated": True,
+        "audit_marker": marker,
+    }
+
+
+def filter_operator_todo_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return only currently actionable items from the two authoritative hubs."""
+    if not isinstance(items, list):
+        raise PreferenceError("TODO items must be an array")
+    excluded_states = {"delegated", "resolved", "evidence_gathering"}
+    excluded_kinds = {
+        "routine_report", "ordinary_failure", "internal_retry", "ordinary_test_result",
+        "non_authoritative_copy",
+    }
+    actionable: list[dict[str, Any]] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise PreferenceError(f"TODO items[{index}] must be an object")
+        if item.get("operator_actionable_now") is not True:
+            continue
+        if (
+            item.get("evidence_complete") is not True
+            or item.get("exact_identity_and_surface") is not True
+            or item.get("no_unresolved_safety_dissent") is not True
+        ):
+            continue
+        if item.get("authoritative_hub") not in {"general_office", "creative_director"}:
+            continue
+        if item.get("state") in excluded_states or item.get("kind") in excluded_kinds:
+            continue
+        if item.get("entry_available") is not True:
+            continue
+        if item.get("testing_required") is True and item.get("testing_gate") != "exact_pass":
+            continue
+        if item.get("kind") == "visual_selection" and (
+            item.get("authoritative_hub") != "creative_director"
+            or item.get("clickable_entry") is not True
+            or item.get("candidate_hash_frozen") is not True
+            or item.get("testing_gate") != "exact_pass"
+        ):
+            continue
+        actionable.append(copy.deepcopy(item))
+    return actionable
+
+
 def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink() or path.parent.is_symlink():
@@ -701,15 +1353,23 @@ def managed_agents_block(profile_path: Path, renderer_path: Path) -> str:
 
 - Before a complete user-facing reply, read `{profile_path}` when it exists and apply only policies whose `enabled` value is true. Missing or invalid profiles disable optional behavior; they do not change core safety or approval rules.
 - If `operator_salutation.enabled` is true, use its configured value unless the operator explicitly overrides it in the current conversation.
-- Name every durable Chief task with the exact prefix `Chief of `. The only title-prefix exceptions are the configured general-office task and TODO task. Non-Chief durable roles keep the `Role｜Work outcome` convention. Treat a user-supplied title as content guidance, not permission to drop the Chief prefix, unless it names one of those two exception roles.
+- Name every durable Chief task with the exact prefix `Chief of `. The configured general-office and TODO tasks plus the non-Chief context migration monitor are title-prefix exceptions. Other non-Chief durable roles keep the `Role｜Work outcome` convention. Treat a user-supplied title as content guidance, not permission to drop the Chief prefix unless it names one of those registered exceptions.
 - Apply `report_review_mode`. In `exception_only`, the project Chief reviews routine child progress and final handoffs against their contracts without asking the operator. Escalate only goal confirmation, material product choices, visual choices through the Creative Director, protected actions, safety/security, ownership or scope conflicts, failed or unverifiable work, depth expansion, and final project completion.
 - If `governance_model.enabled` is true, treat the operator as chair: project Chiefs own routine administration, auditors have evidence-only authority, roles follow the registered chain of command, and an unresolved decision freezes only its affected write surface. Route non-visual statutory exceptions only to the configured general-office task as `CHAIR_BRIEF_READY`; only that task may emit the operator-facing `USER_ACTION_REQUIRED`. TODO scans only the general office and Creative Director.
-- Apply `pin_governance` narrowly. Ordinary Chiefs default unpinned, and their unpinned state is not a failure. Mandatory pins are limited to the configured general office, TODO, Creative Director, context migration monitor, Testing Director, and their valid successors. The Testing Director is an evidence and quality-policy role, not a second operator-facing approval hub and not an independent project writer. An optional product Chief may be pinned, created for pinning, unpinned, or replaced only after a general-office recommendation and the operator's explicit approval; pin approval never confirms the project goal or authorizes engineering, design, production, or bypass of the Product Manager discovery gate.
+- Apply `pin_governance` narrowly. Ordinary Chiefs default unpinned, and their unpinned state is not a failure. Mandatory pins are limited to the configured general office, TODO, Creative Director, context migration monitor, and their valid successors. The Testing Director is an ordinary, default-unpinned, coordination-only evidence role and occupies neither a mandatory pin nor an optional product slot. An optional product Chief may be pinned, created for pinning, unpinned, or replaced only after a general-office recommendation and the operator's explicit approval; pin approval never confirms the project goal or authorizes engineering, design, production, or bypass of the Product Manager discovery gate.
 - The general office recommends at most three candidates in one pending pack. TODO is read-only and checks identity, currentness, duplication, evidence freshness, observed capacity, and lineage. Preserve manual non-Chief pins. At full capacity, produce only a paired replacement recommendation; never evict automatically. Exclude paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs by default. A `pinned: true` receipt is not proof; fresh `list_threads` exact-ID presence is required. Only mandatory or operator-approved lineages may use the safe-handoff single-replacement successor path.
 - If `automation_inheritance.enabled` is true, inventory every automation bound to a migrating task with exact ID, name, kind, target task ID, status, schedule, prompt SHA-256, and notification policy. Before takeover, authority switching, or predecessor archival, reuse and rebind each automation to the exact successor task ID. Only when live evidence proves the old automation is absent may one minimal equivalent be created within existing authorization. Preserve schedule, prompt semantics, notification policy, and scope; forbid duplicate active same-duty automations.
 - Automation references and update receipts are not proof. Require a fresh live automation view proving exact target, status, and schedule. Missing or mismatched automation parity records `automation_rebind_failed`, returns `MIGRATION_BLOCKED`, and keeps the predecessor active and unarchived. Takeover requires bundle parity, automation parity, and pin parity when applicable. Historical repair never unarchives or deletes a predecessor and never creates duplicate tasks or automations.
-- If `project_start_capability_discovery.enabled` is true, begin an evidence-backed capability scan during project startup and complete a stack-specific confirmation before production execution. Search existing host capabilities, installed and available Codex plugins and Skills, official documentation, maintained open-source projects, and reusable external configuration patterns. Optimize for coverage and productivity rather than token or elapsed-time savings; require fit, maintenance, license, supply-chain, permission, overlap, and integration evidence. Reuse or adapt a suitable capability before building a replacement. Pull or install only selected, reviewed capabilities within existing authorization; payment, permission expansion, production/external actions, and other protected changes still require separate explicit approval. Testing-related findings require Testing Director review.
+- For context capture, automatically continue only exact source-session-change and non-overwriting migration-number collisions. Allow at most one atomic build+verify per source-task safe boundary, fresh-check the newest nonzero usage/threshold/write safety, use the next unused monotonic number, and never overwrite/delete an older bundle or create a successor before a valid bundle. Repeated transient failures enter Chief-owned read-only diagnosis/backoff without `USER_ACTION_REQUIRED`; permission, storage, worktree, validation, automation, pin, and parity failures keep their actual gates.
+- If `project_start_capability_discovery.enabled` is true, treat the key as schema-version-1 compatible. A legacy section without lifecycle fields retains the project-start scan and pre-production stack confirmation. A complete lifecycle section applies to all registered Chiefs at project start, phase/stack changes, repeated manual work, blockers/failures, before custom build, and before production execution. It is discover/evaluate/recommend only: do not install, pull, download, enable, connect accounts, add dependencies, pay, contact outsiders, send externally, mutate a project, or use a candidate in production without separate explicit approval. Use at most two scans, one deduplicated material pack, and three fixed-version candidates per trigger; keep no-result/all-reject/routine scans internal. Defer paused work, exclude completed/archived work, prefer project-local future adoption, route testing candidates first to the Testing Director, and keep visual direction with the Creative Director.
+- Keep project runtime paths portable. Resolve a caller-selected project-specific environment override when present, then the Git root, then project markers upward from the script/configuration location, then the current project directory. The override is optional. Active state uses a stable `root_id` and project-relative POSIX paths; reject absolute project input, parent traversal, drive syntax, and symlink escape. Register external tools/materials by exact identity, path, permissions, and authorization without making them the project root. Preserve historical absolute-path evidence unchanged but exclude it from active root resolution; portable derivatives use a new hash and `derived_from`. Never default to a fixed volume, user home, temporary directory, machine username, or prior-device path.
 - If `governance_model.continuation_policy.enabled` is true, every project Chief must select and execute the strongest evidence-backed safe in-scope continuation without asking the operator. Do not present stopping, preserving a failed state, or delaying as peer options while a safe continuation exists; the operator will initiate those choices when wanted. Escalate only when continuing itself requires a new permission or creation of a new Chief. An ordinary failure remains Chief-owned while another bounded safe diagnostic, repair, or verification path exists. This policy does not authorize protected actions, bypass the Creative Director visual gate, or conceal safety/security evidence; those constraints determine whether a path is safe and already authorized.
+- If `governance_model.continuation_policy.autonomy_policy.enabled` is true, start a goal with one conditional approval package covering goal, surfaces, action classes, external targets, data class, finite resources, action-time revalidation, stop/rollback, and deferred final decisions. Recheck each action. New permissions, real data, credentials/secrets, production, release/deploy, payment, external send, and platform safety refusals remain separate stops. Use native clickable questions for missing material choices when available; a recommendation or silence is not approval.
+- A newly approved nonvisual operator decision may relay once by stable ID and exact original wording to its registered source Chief, with mandatory asynchronous nonblocking General Office audit. Unknown/stale/duplicate IDs do not relay; delivery/ACK is not execution or Testing evidence. Initial permission requests remain General-Office-only; visual decisions remain Creative-Director-only.
+- Legacy repair limits remain unchanged. Under enabled autonomy policy, a genuine phase covered by the original conditional package may renew only its phase-local defect allowance and supersede only recorded numerical local-preparation limits; permission, safety, denial, paused, real-data, production, and external stops remain. Native clickable questions collect missing material choices when supported; they never bypass platform permission or safety limits.
+- A continuous execution exception is never implied by this preference: it needs one exact approved package bound to existing plan, registry, approval, retry, and delivery-ledger records. Preserve explicit one-shot, denial, paused/archive, finite resource, independent-review, and protected-action stops; a host must only return a bounded local intent and never send, wake, or grant access itself.
+- If `governance_model.continuation_policy.recommended_action_delegation.enabled` is true, the general office directly standing-delegates one evidence-complete, fixed-surface, nonproduction action from the exact allowlist and records `DELEGATED_RECOMMENDATION_EXECUTED: <stable_id>` for the source Chief. Require explicit `external_send=false` plus the selected class's exact allowlist, bounds, ownership/read-only, stop/rollback, and one-shot or one-repair-cycle evidence before delegation. Do not emit `USER_ACTION_REQUIRED`, a suggested reply, or a TODO item for delegated work. Prior explicit operator denial and every configured operator-only action remain reserved; ambiguity, incomplete evidence, unresolved safety dissent, failure, drift, or scope expansion stops delegation and never auto-reruns.
+- TODO includes only `operator_actionable_now=true` records from the authoritative general-office or Creative Director hub after evidence completeness, exact identity/surface, and absence of unresolved safety dissent are present. Exclude delegated/resolved work, evidence gathering, unavailable entries, routine reports, ordinary failures, internal retries, ordinary test results, and non-authoritative copies. A Creative Director visual item is actionable only when its clickable entry is available, its candidate hash is frozen, and Testing passed that exact candidate.
 - If `visual_selection_gate.enabled` is true, require clickable non-final previews and the operator's explicit selection before final visual implementation. Route every visual packet only to the configured `Chief of Creative Direction｜创意总监` task; do not duplicate it to the general Chief task, project tasks, roles, or TODO. If unanswered, only that Creative Director task remains the authoritative waiting item for the TODO scanner.
 - If `american_english_coaching.enabled` is true, append its configured written, spoken, and idiom sections. Include casual conversation only when `include_casual_chat` is true.
 - If audio is enabled with `provider: host_builtin`, keep the English text available for the host's built-in voice/read-aloud control; generate no files and do not claim autoplay or per-sentence native controls. For `auto` or `macos_say`, render each enabled written/spoken sentence with `{renderer_path}` and attach the returned absolute `.m4a` path separately. If rendering returns `text_only`, keep the text and do not write to another directory.

@@ -1,5 +1,7 @@
-import importlib.util, json, os, subprocess, sys, tempfile, unittest
+import contextlib, importlib.util, io, json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "context-handoff/scripts/context_handoff.py"
@@ -30,6 +32,18 @@ def build_bundle(root, automations):
     result=subprocess.run([sys.executable,str(SCRIPT),"build","--session",str(source),"--title","Task","--handoff",str(handoff),"--artifacts",str(artifacts),"--automations",str(inventory)],check=True,capture_output=True,text=True,env=env)
     return Path(json.loads(result.stdout)["bundle"])
 
+def capture_args(root, used=850, boundary="boundary-1"):
+    source=root/"s.jsonl"; handoff=root/"h.md"; artifacts=root/"a.json"; inventory=root/"automations-input.json"; codex=root/"codex"
+    session(source,used); handoff.write_text("# Handoff\nNext: verify.\n"); artifacts.write_text("{}\n"); inventory.write_text("[]\n")
+    return SimpleNamespace(session=source,title="Task",handoff=handoff,artifacts=artifacts,automations=inventory,
+                           project_root=None,lineage_id=None,safe_boundary_id=boundary,resume_after_diagnosis=False), codex
+
+def run_capture(args, codex):
+    output=io.StringIO()
+    with mock.patch.dict(os.environ,{"CODEX_HOME":str(codex)}), contextlib.redirect_stdout(output):
+        code=MODULE.capture(args)
+    return code,json.loads(output.getvalue())
+
 def parity(bundle, root, live, *extra, successor="successor"):
     manifest=json.loads((bundle/"manifest.json").read_text()); inventory=json.loads((bundle/"automations.json").read_text())
     live.setdefault("observed_at","2026-08-26T00:00:00Z")
@@ -53,6 +67,113 @@ class ContextHandoffTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/"s.jsonl"; session(path,740)
             self.assertEqual(MODULE.inspect(path)["state"], "normal")
+
+    def test_latest_zero_sample_does_not_replace_newest_usable_nonzero_sample(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"s.jsonl"; session(path,800)
+            zero={"timestamp":"2026-08-23T00:02:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":0},"model_context_window":1000}}}
+            path.write_text(path.read_text()+json.dumps(zero)+"\n")
+            sample=MODULE.inspect(path)
+            self.assertEqual(sample["input_tokens"],800)
+            self.assertEqual(sample["state"],"checkpoint")
+
+    def test_capture_below_threshold_cancels_without_bundle_or_successor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); args,codex=capture_args(root,740)
+            code,result=run_capture(args,codex)
+            self.assertEqual(code,0)
+            self.assertEqual(result["status"],"CHECKPOINT_CANCELLED")
+            self.assertFalse(result["successor_created"])
+            self.assertFalse((codex/"context-migrations").exists())
+
+    def test_capture_is_limited_to_one_build_verify_per_safe_boundary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); args,codex=capture_args(root)
+            first_code,first=run_capture(args,codex)
+            second_code,second=run_capture(args,codex)
+            self.assertEqual(first_code,0); self.assertEqual(first["status"],"CHECKPOINT_READY")
+            self.assertEqual(second_code,0); self.assertEqual(second["status"],"SAFE_BOUNDARY_ATTEMPT_LIMIT")
+            lineage=codex/"context-migrations/thread-1"
+            self.assertEqual([p.name for p in lineage.iterdir() if p.is_dir() and p.name.isdigit()],["0001"])
+            self.assertIsNone(json.loads((lineage/"0001/manifest.json").read_text())["successor_thread_id"])
+
+    def test_session_change_uses_new_number_at_next_safe_boundary_without_operator_attention(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); args,codex=capture_args(root)
+            original=MODULE.build_once
+            def changing_build(*values):
+                bundle,manifest=original(*values)
+                args.session.write_text(args.session.read_text()+"{}\n")
+                return bundle,manifest
+            with mock.patch.object(MODULE,"build_once",side_effect=changing_build):
+                first_code,first=run_capture(args,codex)
+            self.assertEqual(first_code,3)
+            self.assertEqual(first["status"],"TRANSIENT_CAPTURE_RETRY_NEXT_SAFE_BOUNDARY")
+            self.assertFalse(first["operator_attention_required"])
+            old_manifest=(Path(first["bundle"])/"manifest.json").read_bytes()
+            session(args.session,850); args.safe_boundary_id="boundary-2"
+            second_code,second=run_capture(args,codex)
+            self.assertEqual(second_code,0); self.assertEqual(second["migration_number"],2)
+            self.assertEqual((Path(first["bundle"])/"manifest.json").read_bytes(),old_manifest)
+            self.assertFalse(second["successor_created"])
+
+    def test_existing_target_number_is_skipped_without_overwrite_or_delete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); source=root/"s.jsonl"; handoff=root/"h.md"; artifacts=root/"a.json"; inventory=root/"automations.json"; codex=root/"codex"
+            session(source,850); handoff.write_text("handoff\n"); artifacts.write_text("{}\n"); inventory.write_text("[]\n")
+            command=[sys.executable,str(SCRIPT),"build","--session",str(source),"--title","Task","--handoff",str(handoff),"--artifacts",str(artifacts),"--automations",str(inventory),"--migration-number","1"]
+            env=dict(os.environ,CODEX_HOME=str(codex))
+            first=subprocess.run(command,check=True,capture_output=True,text=True,env=env); first_bundle=Path(json.loads(first.stdout)["bundle"])
+            first_hash=MODULE.digest(first_bundle/"manifest.json")
+            second=subprocess.run(command,check=True,capture_output=True,text=True,env=env); report=json.loads(second.stdout)
+            self.assertEqual(report["manifest"]["migration_number"],2)
+            self.assertTrue(report["number_collision_avoided"])
+            self.assertEqual(MODULE.digest(first_bundle/"manifest.json"),first_hash)
+
+    def test_regular_file_numeric_slot_is_occupied_and_capture_advances(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); args,codex=capture_args(root)
+            lineage=codex/"context-migrations/thread-1"; lineage.mkdir(parents=True)
+            occupied=lineage/"0001"; occupied.write_text("preserve exactly\n")
+            code,result=run_capture(args,codex)
+            self.assertEqual(code,0); self.assertEqual(result["migration_number"],2)
+            self.assertEqual(occupied.read_text(),"preserve exactly\n")
+            self.assertTrue((lineage/"0002/manifest.json").is_file())
+
+    def test_repeated_transient_failures_enter_chief_owned_diagnosis_without_user_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); args,codex=capture_args(root); original=MODULE.build_once
+            def changing_build(*values):
+                bundle,manifest=original(*values)
+                args.session.write_text(args.session.read_text()+"{}\n")
+                return bundle,manifest
+            with mock.patch.object(MODULE,"build_once",side_effect=changing_build):
+                reports=[]
+                for index in range(3):
+                    session(args.session,850); args.safe_boundary_id=f"boundary-{index}"
+                    _,report=run_capture(args,codex); reports.append(report)
+            self.assertEqual(reports[-1]["status"],"TRANSIENT_CAPTURE_DIAGNOSIS_REQUIRED")
+            self.assertEqual(reports[-1]["action"],"chief_owned_read_only_diagnosis_and_backoff")
+            self.assertFalse(reports[-1]["operator_attention_required"])
+            lineage=codex/"context-migrations/thread-1"
+            before=sorted(p.name for p in lineage.iterdir() if p.is_dir() and p.name.isdigit())
+            session(args.session,850); args.safe_boundary_id="boundary-after-threshold"
+            code,diagnosis=run_capture(args,codex)
+            after=sorted(p.name for p in lineage.iterdir() if p.is_dir() and p.name.isdigit())
+            self.assertEqual(code,0); self.assertEqual(diagnosis["status"],"TRANSIENT_CAPTURE_DIAGNOSIS_REQUIRED")
+            self.assertEqual(after,before)
+
+    def test_nontransient_verify_error_stops_without_successor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); args,codex=capture_args(root)
+            blocked={"bundle":"fixture","valid":False,"migration_eligibility":"invalid","errors":["checksum mismatch: handoff.md"]}
+            with mock.patch.object(MODULE,"verify_bundle",return_value=(blocked,1)):
+                code,result=run_capture(args,codex)
+            self.assertEqual(code,1); self.assertEqual(result["status"],"CAPTURE_BLOCKED")
+            self.assertFalse(result["successor_created"])
+            self.assertFalse(result["operator_attention_required"])
+            second_code,second=run_capture(args,codex)
+            self.assertEqual(second_code,0); self.assertEqual(second["status"],"SAFE_BOUNDARY_ATTEMPT_LIMIT")
 
     def test_bundle_and_tamper_detection(self):
         with tempfile.TemporaryDirectory() as tmp:

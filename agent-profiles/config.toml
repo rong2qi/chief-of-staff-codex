@@ -1,0 +1,27 @@
+schema_version = 2
+# This is a candidate routing convention, not a Codex-native runtime switch.
+enabled = true
+default_active_agents = 3
+max_active_agents = 4
+max_parallel_business_lanes = 2
+max_heavy_local_tasks = 1
+max_deliberation_rounds = 2
+max_independent_verifications = 1
+# Legacy/default ceiling. A separately approved, finite execution package is
+# required before a real-progress route may exceed it.
+max_repair_cycles = 3
+
+[models]
+astra = "gpt-6-astra"
+sol = "gpt-5.6-sol"
+terra = "gpt-5.6-terra"
+luna = "gpt-5.6-luna"
+
+[risk.low]
+route = ["terra-implementer"]
+
+[risk.medium]
+route = ["luna-scout", "terra-implementer", "luna-scout"]
+
+[risk.high]
+route = ["astra-arbiter", "terra-implementer", "sol-arbiter"]

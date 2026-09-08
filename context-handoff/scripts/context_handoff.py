@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 LIMITS = (0.75, 0.85, 0.95)
+TRANSIENT_DIAGNOSIS_THRESHOLD = 3
 BASE_FILES = ("manifest.json", "handoff.md", "artifacts.json", "transcript-ref.json")
 AUTOMATION_FIELDS = (
     "id", "name", "kind", "target_thread_id", "status", "schedule",
@@ -48,7 +49,11 @@ def inspect(path: Path):
             payload = event.get("payload", {})
             if event.get("type") == "session_meta": meta = payload
             elif event.get("type") == "event_msg" and payload.get("type") == "token_count":
-                latest, stamp = payload.get("info"), event.get("timestamp")
+                candidate = payload.get("info")
+                used = (candidate.get("last_token_usage") or {}).get("input_tokens") if isinstance(candidate, dict) else None
+                window = candidate.get("model_context_window") if isinstance(candidate, dict) else None
+                if isinstance(used, int) and used > 0 and isinstance(window, int) and window > 0:
+                    latest, stamp = candidate, event.get("timestamp")
             elif event.get("type") == "event_msg" and payload.get("type") == "task_started": model = payload.get("model") or model
     if not isinstance(latest, dict): return None
     used = (latest.get("last_token_usage") or {}).get("input_tokens")
@@ -120,46 +125,67 @@ def automation_records(value: Any, label: str) -> list[dict[str, Any]]:
 def automation_file(path: Path) -> list[dict[str, Any]]:
     return automation_records(json.loads(path.read_text(encoding="utf-8")), str(path))
 
-def build(args):
-    sample = inspect(args.session)
-    if not sample: raise ValueError("source session has no usable token_count")
+def bundle_root(args, sample: dict[str, Any]) -> Path:
+    lineage = args.lineage_id or sample["thread_id"]
+    if not lineage: raise ValueError("missing lineage ID")
+    store = args.project_root / ".codex/context-migrations" if args.project_root else home() / "context-migrations"
+    root = store / str(lineage)
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+def next_migration_number(root: Path, requested: int | None = None) -> tuple[int, bool]:
+    existing = {int(p.name) for p in root.iterdir() if p.name.isdigit()}
+    if requested is not None and requested > 0 and requested not in existing:
+        return requested, False
+    return max(existing, default=0) + 1, requested is not None
+
+def build_once(args, sample: dict[str, Any], root: Path, number: int) -> tuple[Path, dict[str, Any]]:
     handoff, artifacts = args.handoff.read_text(encoding="utf-8"), object_file(args.artifacts)
     automations = automation_file(args.automations)
     if not handoff.strip(): raise ValueError("handoff must not be empty")
     lineage = args.lineage_id or sample["thread_id"]
-    if not lineage: raise ValueError("missing lineage ID")
-    store = args.project_root / ".codex/context-migrations" if args.project_root else home() / "context-migrations"
-    root = store / str(lineage); root.mkdir(parents=True, exist_ok=True)
-    existing = [int(p.name) for p in root.iterdir() if p.is_dir() and p.name.isdigit()]
-    number = args.migration_number or max(existing, default=0) + 1
-    bundle, lock = root / f"{number:04d}", root / ".migration.lock"
+    bundle = root / f"{number:04d}"
+    bundle.mkdir()
+    write(bundle / "handoff.md", handoff.rstrip() + "\n"); write_json(bundle / "artifacts.json", artifacts)
+    write_json(bundle / "automations.json", automations)
+    source = args.session.resolve(); stat = source.stat()
+    ref = {"thread_id": sample["thread_id"], "path": str(source), "sha256": digest(source), "size_bytes": stat.st_size,
+           "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat().replace("+00:00", "Z")}
+    write_json(bundle / "transcript-ref.json", ref)
+    agents = home() / "AGENTS.md"; cwd = Path(sample["cwd"] or Path.cwd()); stamp = now()
+    manifest = {"schema_version": 2, "lineage_id": str(lineage), "migration_number": number, "status": "checkpoint_ready",
+                "predecessor_thread_id": sample["thread_id"], "successor_thread_id": None, "title": args.title,
+                "cwd": str(cwd), "project_root": str(args.project_root.resolve()) if args.project_root else None, "model": sample["model"],
+                "context": {k: sample[k] for k in ("input_tokens", "model_context_window", "ratio", "percent", "state", "sampled_at")},
+                "source_session": ref, "git": git(cwd),
+                "global_instructions": {"path": str(agents), "sha256": digest(agents) if agents.exists() else None, "operator_salutation": "妈妈"},
+                "automation_inheritance": {"bound": bool(automations), "count": len(automations)},
+                "parity": {"bundle": "pending", "automation": "pending", "pin": "pending"},
+                "takeover": {"authority_switched": False, "predecessor_active": True, "predecessor_archived": False},
+                "checksums": {n: digest(bundle / n) for n in ("handoff.md", "artifacts.json", "transcript-ref.json", "automations.json")},
+                "created_at": stamp, "updated_at": stamp}
+    write_json(bundle / "manifest.json", manifest)
+    return bundle, manifest
+
+def build(args):
+    sample = inspect(args.session)
+    if not sample: raise ValueError("source session has no usable token_count")
+    root = bundle_root(args, sample); lock = root / ".migration.lock"
     try: lock.mkdir()
     except FileExistsError: raise RuntimeError(f"migration locked: {root}")
     try:
-        bundle.mkdir(); write(bundle / "handoff.md", handoff.rstrip() + "\n"); write_json(bundle / "artifacts.json", artifacts)
-        write_json(bundle / "automations.json", automations)
-        source = args.session.resolve(); stat = source.stat()
-        ref = {"thread_id": sample["thread_id"], "path": str(source), "sha256": digest(source), "size_bytes": stat.st_size,
-               "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat().replace("+00:00", "Z")}
-        write_json(bundle / "transcript-ref.json", ref)
-        agents = home() / "AGENTS.md"; cwd = Path(sample["cwd"] or Path.cwd()); stamp = now()
-        manifest = {"schema_version": 2, "lineage_id": str(lineage), "migration_number": number, "status": "checkpoint_ready",
-                    "predecessor_thread_id": sample["thread_id"], "successor_thread_id": None, "title": args.title,
-                    "cwd": str(cwd), "project_root": str(args.project_root.resolve()) if args.project_root else None, "model": sample["model"],
-                    "context": {k: sample[k] for k in ("input_tokens", "model_context_window", "ratio", "percent", "state", "sampled_at")},
-                    "source_session": ref, "git": git(cwd),
-                    "global_instructions": {"path": str(agents), "sha256": digest(agents) if agents.exists() else None, "operator_salutation": "妈妈"},
-                    "automation_inheritance": {"bound": bool(automations), "count": len(automations)},
-                    "parity": {"bundle": "pending", "automation": "pending", "pin": "pending"},
-                    "takeover": {"authority_switched": False, "predecessor_active": True, "predecessor_archived": False},
-                    "checksums": {n: digest(bundle / n) for n in ("handoff.md", "artifacts.json", "transcript-ref.json", "automations.json")},
-                    "created_at": stamp, "updated_at": stamp}
-        write_json(bundle / "manifest.json", manifest)
+        number, collision_avoided = next_migration_number(root, args.migration_number)
+        try:
+            bundle, manifest = build_once(args, sample, root, number)
+        except FileExistsError:
+            number, _ = next_migration_number(root)
+            bundle, manifest = build_once(args, sample, root, number)
+            collision_avoided = True
     finally: lock.rmdir()
-    print(json.dumps({"bundle": str(bundle), "manifest": manifest}, ensure_ascii=False, indent=2)); return 0
+    print(json.dumps({"bundle": str(bundle), "manifest": manifest, "number_collision_avoided": collision_avoided}, ensure_ascii=False, indent=2)); return 0
 
-def verify(args):
-    bundle, errors = args.bundle.resolve(), []
+def verify_bundle(bundle: Path) -> tuple[dict[str, Any], int]:
+    bundle, errors = bundle.resolve(), []
     manifest_path = bundle / "manifest.json"
     schema_version = None
     if manifest_path.is_file():
@@ -188,7 +214,70 @@ def verify(args):
         if not path.is_file(): errors.append("source session unavailable")
         elif source.get("sha256") != digest(path): errors.append("source session changed after capture")
     eligibility = "legacy_unassessed" if schema_version == 1 and not errors else "eligible_for_parity" if schema_version == 2 and not errors else "invalid"
-    print(json.dumps({"bundle": str(bundle), "valid": not errors, "migration_eligibility": eligibility, "errors": errors}, ensure_ascii=False, indent=2)); return 0 if not errors else 1
+    result = {"bundle": str(bundle), "valid": not errors, "migration_eligibility": eligibility, "errors": errors}
+    return result, 0 if not errors else 1
+
+def verify(args):
+    result, code = verify_bundle(args.bundle)
+    print(json.dumps(result, ensure_ascii=False, indent=2)); return code
+
+def capture(args):
+    sample = inspect(args.session)
+    if not sample: raise ValueError("source session has no usable token_count")
+    if sample["state"] == "normal":
+        print(json.dumps({"status": "CHECKPOINT_CANCELLED", "reason": "latest context usage is below 75%", "context": sample,
+                          "successor_created": False, "operator_attention_required": False}, ensure_ascii=False, indent=2))
+        return 0
+    root = bundle_root(args, sample); lock = root / ".migration.lock"; ledger_path = root / ".capture-state.json"
+    try: lock.mkdir()
+    except FileExistsError: raise RuntimeError(f"migration locked: {root}")
+    try:
+        ledger = object_file(ledger_path) if ledger_path.exists() else {}
+        if ledger.get("last_safe_boundary_id") == args.safe_boundary_id:
+            print(json.dumps({"status": "SAFE_BOUNDARY_ATTEMPT_LIMIT", "reason": "build+verify already attempted for this safe boundary",
+                              "safe_boundary_id": args.safe_boundary_id, "successor_created": False,
+                              "operator_attention_required": False}, ensure_ascii=False, indent=2))
+            return 0
+        if int(ledger.get("consecutive_transient_failures", 0)) >= TRANSIENT_DIAGNOSIS_THRESHOLD and not args.resume_after_diagnosis:
+            print(json.dumps({"status": "TRANSIENT_CAPTURE_DIAGNOSIS_REQUIRED",
+                              "action": "chief_owned_read_only_diagnosis_and_backoff",
+                              "safe_boundary_id": args.safe_boundary_id,
+                              "consecutive_transient_failures": ledger["consecutive_transient_failures"],
+                              "successor_created": False, "operator_attention_required": False}, ensure_ascii=False, indent=2))
+            return 0
+        previous_transient = 0 if args.resume_after_diagnosis else int(ledger.get("consecutive_transient_failures", 0))
+        write_json(ledger_path, {"last_safe_boundary_id": args.safe_boundary_id, "last_bundle": None,
+                                 "last_status": "CAPTURE_ATTEMPT_STARTED",
+                                 "consecutive_transient_failures": previous_transient, "updated_at": now()})
+        number, _ = next_migration_number(root)
+        try:
+            bundle, _ = build_once(args, sample, root, number)
+            collision_avoided = False
+        except FileExistsError:
+            number, _ = next_migration_number(root)
+            bundle, _ = build_once(args, sample, root, number)
+            collision_avoided = True
+        result, code = verify_bundle(bundle)
+        transient = result["errors"] == ["source session changed after capture"]
+        consecutive = previous_transient + 1 if transient else 0
+        if code == 0:
+            status, action = "CHECKPOINT_READY", "none"
+        elif transient and consecutive >= TRANSIENT_DIAGNOSIS_THRESHOLD:
+            status, action = "TRANSIENT_CAPTURE_DIAGNOSIS_REQUIRED", "chief_owned_read_only_diagnosis_and_backoff"
+        elif transient:
+            status, action = "TRANSIENT_CAPTURE_RETRY_NEXT_SAFE_BOUNDARY", "use_next_monotonic_number"
+        else:
+            status, action = "CAPTURE_BLOCKED", "classify_actual_nontransient_error"
+        ledger = {"last_safe_boundary_id": args.safe_boundary_id, "last_bundle": str(bundle), "last_status": status,
+                  "consecutive_transient_failures": consecutive, "updated_at": now()}
+        write_json(ledger_path, ledger)
+    finally: lock.rmdir()
+    output = {"status": status, "action": action, "safe_boundary_id": args.safe_boundary_id,
+              "bundle": str(bundle), "migration_number": number, "number_collision_avoided": collision_avoided,
+              "verification": result, "consecutive_transient_failures": consecutive,
+              "successor_created": False, "operator_attention_required": False}
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0 if code == 0 else 3 if transient else 1
 
 def migration_parity(args):
     bundle, errors, bundle_ok = args.bundle.resolve(), [], True
@@ -329,7 +418,14 @@ def migration_parity(args):
 def cli():
     p = argparse.ArgumentParser(); sub = p.add_subparsers(required=True)
     s = sub.add_parser("scan"); s.add_argument("--session-root", type=Path, default=home() / "sessions"); s.add_argument("--minimum-state", choices=("all", "normal", "checkpoint", "rollover", "emergency"), default="checkpoint"); s.add_argument("--active-since-hours", type=float, default=168); s.set_defaults(run=scan)
-    b = sub.add_parser("build"); b.add_argument("--session", type=Path, required=True); b.add_argument("--title", required=True); b.add_argument("--handoff", type=Path, required=True); b.add_argument("--artifacts", type=Path, required=True); b.add_argument("--automations", type=Path, required=True); b.add_argument("--project-root", type=Path); b.add_argument("--lineage-id"); b.add_argument("--migration-number", type=int); b.set_defaults(run=build)
+    def bundle_arguments(parser):
+        parser.add_argument("--session", type=Path, required=True); parser.add_argument("--title", required=True)
+        parser.add_argument("--handoff", type=Path, required=True); parser.add_argument("--artifacts", type=Path, required=True)
+        parser.add_argument("--automations", type=Path, required=True); parser.add_argument("--project-root", type=Path)
+        parser.add_argument("--lineage-id")
+    b = sub.add_parser("build"); bundle_arguments(b); b.add_argument("--migration-number", type=int); b.set_defaults(run=build)
+    c = sub.add_parser("capture"); bundle_arguments(c); c.add_argument("--safe-boundary-id", required=True)
+    c.add_argument("--resume-after-diagnosis", action="store_true"); c.set_defaults(run=capture)
     v = sub.add_parser("verify"); v.add_argument("--bundle", type=Path, required=True); v.set_defaults(run=verify)
     m = sub.add_parser("verify-migration"); m.add_argument("--bundle", type=Path, required=True); m.add_argument("--live-automations", type=Path, required=True); m.add_argument("--successor-thread-id", required=True); m.add_argument("--pin-applicable", action="store_true"); m.add_argument("--pin-evidence", type=Path); m.add_argument("--historical-repair", action="store_true"); m.set_defaults(run=migration_parity)
     return p

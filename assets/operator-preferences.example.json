@@ -21,7 +21,25 @@
         "new_permission",
         "new_chief"
       ],
-      "ordinary_failure_policy": "continue_bounded_diagnosis_repair_and_verification"
+      "ordinary_failure_policy": "continue_bounded_diagnosis_repair_and_verification",
+      "autonomy_policy": {
+        "schema": "CHIEF_AUTONOMY_POLICY_V1",
+        "enabled": false,
+        "approval_package_required": true,
+        "operation_revalidation_required": true,
+        "ordinary_repair_cycles": 3,
+        "protected_actions": ["new_permission", "real_data", "credentials_or_secrets", "production", "release_or_deploy", "payment", "external_send", "security_rejection"]
+      },
+      "recommended_action_delegation": {
+        "enabled": false,
+        "authority_owner": "general_office",
+        "decision_mode": "auto_authorize_single_recommended_bounded_action",
+        "eligible_action_classes": ["exact_task_owned_temp_cleanup", "metadata_only_allowlisted_read", "fixed_sha256_one_shot_nonproduction_execution", "disposable_local_test_stop_rollback", "bounded_repair_recheck_without_scope_expansion"],
+        "required_conditions": ["single_clear_recommendation", "evidence_complete", "exact_identity_and_surface", "independent_verification_when_applicable", "no_unresolved_safety_dissent", "nonproduction", "no_real_customer_or_personal_data", "no_credentials_or_secrets", "stop_and_rollback_defined"],
+        "prior_operator_denial_policy": "requires_explicit_operator_override",
+        "audit_marker": "DELEGATED_RECOMMENDATION_EXECUTED",
+        "operator_only_actions": ["final_goal_or_material_product_direction", "visual_selection", "final_acceptance_or_termination", "chief_appoint_pause_remove_pin_or_replace", "payment_or_purchase", "release_deploy_production_or_rollback", "external_communication_new_collaborator_or_public_visibility", "credentials_secrets_real_identity_or_sensitive_data", "legal_privacy_or_material_security_risk_acceptance", "real_user_or_production_data_deletion", "recursive_broad_or_irreversible_deletion", "write_ownership_conflict", "failed_or_unverifiable_after_allowed_repair_recheck", "override_prior_explicit_operator_denial"]
+      }
     }
   },
   "pin_governance": {
@@ -30,8 +48,7 @@
       {"role": "general_office", "title": "General Office", "thread_id": null},
       {"role": "todo", "title": "Chief TODO", "thread_id": null},
       {"role": "creative_director", "title": "Chief of Creative Direction", "thread_id": null},
-      {"role": "context_migration_monitor", "title": "Chief of Context Migration", "thread_id": null},
-      {"role": "testing_director", "title": "Chief of Testing", "thread_id": null}
+      {"role": "context_migration_monitor", "title": "Chief of Context Migration", "thread_id": null}
     ],
     "optional_chief_slots": {
       "limit": 6,

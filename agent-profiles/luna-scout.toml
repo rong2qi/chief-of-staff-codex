@@ -1,0 +1,5 @@
+model = "gpt-5.6-luna"
+reasoning_effort = "low"
+max_turns = 1
+write_access = false
+task_types = ["search", "test", "diff_review", "boundary_scan"]

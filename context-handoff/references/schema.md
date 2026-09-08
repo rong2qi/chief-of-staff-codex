@@ -2,6 +2,8 @@
 
 Each new lineage migration has numbered directories containing `manifest.json`, `handoff.md`, `artifacts.json`, `automations.json`, and `transcript-ref.json`. Historical schema-v1 bundles remain checksum-verifiable but cannot establish automation parity.
 
+The lineage root may contain `.capture-state.json`, an atomic internal ledger with the last safe-boundary ID, last bundle/status, consecutive transient-failure count, and update time. It enforces one build+verify per safe boundary and supports bounded continuation; it is not bundle parity evidence and never authorizes successor creation or takeover. Numbered directories are append-only for capture: collision handling selects the next unused monotonic number and never overwrites or deletes an existing bundle.
+
 The manifest records schema version, lineage/migration number, status, predecessor/successor IDs, title, cwd/project, model, context sample, source session hash, Git snapshot, global instruction hash and salutation, automation-binding count, file checksums, parity/takeover state, and UTC timestamps. Status is `checkpoint_ready`, `successor_created`, `verified`, `migration_blocked`, or `needs_attention`; never mark verified before handshake parity.
 
 `artifacts.json` is an object of stable file/commit/branch/task/approval/report/link/check references without secrets. `transcript-ref.json` contains only the immutable predecessor session path, hash, size, time, and thread ID.

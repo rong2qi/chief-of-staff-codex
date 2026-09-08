@@ -6,12 +6,19 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from preference_lib import PreferenceError, read_json, require_valid, validate_preferences
 from legacy_terminology_migration import CURRENT_ROLE_CLASS, migrate_pin_state_input
+import agent_os
+from delivery_ledger import Ledger, LedgerError
+from legacy_agents_gate import LegacyGateError, validate_candidate_binding, validate_gate
+import continuous_execution
 
 try:
     import tomllib
@@ -73,6 +80,22 @@ STATUS_HEADINGS = (
     "待确认项", "待批复汇报", "正在工作的岗位", "距最终交付的差距",
     "风险", "下一步", "下一检查点",
 )
+AGENT_OS_MODE = "required"
+AGENT_OS_MANIFEST = ".agent-os/manifest.json"
+STRICT_LEDGER_PATH = ".chief-of-staff/delivery-ledger"
+STRICT_LEDGER_TRIGGERS = ["next_active_turn", "cold_start", "authorized_heartbeat"]
+
+
+class WriteTransactionError(RuntimeError):
+    """Raised when an initializer transaction restores its original tree."""
+
+
+class RecoveryIncompleteError(WriteTransactionError):
+    """Raised when a transaction preserves staged backups for manual recovery."""
+
+    def __init__(self, staging_path: Path):
+        self.staging_path = staging_path
+        super().__init__(f"transaction recovery incomplete; staged backup retained at {staging_path}")
 
 
 def render(source: Path, project_name: str, preferences: Optional[dict] = None) -> bytes:
@@ -112,6 +135,9 @@ def render(source: Path, project_name: str, preferences: Optional[dict] = None) 
                     project["continuation_escalation_policy"] = (
                         "new_permission_or_new_chief"
                     )
+                    autonomy = continuation.get("autonomy_policy", {})
+                    if autonomy.get("enabled") is True:
+                        project["autonomy_policy_enabled"] = True
             visual = preferences["visual_selection_gate"]
             project["visual_selection_gate"] = (
                 "operator_after_clickable_preview" if visual["enabled"] else "disabled"
@@ -380,6 +406,24 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
         ):
             if key in value and not isinstance(value[key], str):
                 errors.append(f"{key} in {relative} must be a string")
+        agent_os_mode = value.get("agent_os_mode")
+        agent_os_manifest = value.get("agent_os_manifest")
+        if agent_os_mode is None and agent_os_manifest is None:
+            pass
+        elif (
+            agent_os_mode != AGENT_OS_MODE
+            or agent_os_manifest != AGENT_OS_MANIFEST
+        ):
+            errors.append(
+                f"Agent OS fields in {relative} must be omitted for legacy projects or "
+                f"set to {AGENT_OS_MODE!r} and {AGENT_OS_MANIFEST!r}"
+            )
+        if "delivery_ledger_mode" in value:
+            if value.get("delivery_ledger_mode") != "strict" or value.get("delivery_ledger_path") != STRICT_LEDGER_PATH or value.get("delivery_ledger_reconcile_triggers") != STRICT_LEDGER_TRIGGERS:
+                errors.append(f"strict delivery ledger fields in {relative} are invalid")
+        retry_cycles = value.get("max_repair_cycles", 3)
+        if type(retry_cycles) is not int or not 1 <= retry_cycles <= 3:
+            errors.append(f"max_repair_cycles in {relative} must be an integer from 1 through 3")
         project_name = value.get("project_name")
         primary_task_title = value.get("primary_task_title")
         if isinstance(project_name, str) and isinstance(primary_task_title, str):
@@ -466,6 +510,10 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
                         f"{key} in {relative} must be {expected_value!r} under "
                         "advance_best_safe_in_scope_path"
                     )
+        if value.get("autonomy_policy_enabled") is not None and not isinstance(value.get("autonomy_policy_enabled"), bool):
+            errors.append(f"autonomy_policy_enabled in {relative} must be a boolean")
+        elif value.get("autonomy_policy_enabled") and continuation_policy != "advance_best_safe_in_scope_path":
+            errors.append(f"autonomy_policy_enabled in {relative} requires continuation policy")
         if value.get("visual_selection_gate") not in {
             "disabled", "operator_after_clickable_preview"
         }:
@@ -1364,7 +1412,7 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             errors.append(f"last_evidence_checkpoint in {relative} must be a string or null")
 
 
-def validate(target: Path) -> list[str]:
+def validate(target: Path, *, legacy_trust_root: str | None = None) -> list[str]:
     errors: list[str] = []
     required = [relative for _, relative in template_files()]
     for relative in required:
@@ -1405,7 +1453,44 @@ def validate(target: Path) -> list[str]:
     discovery_path = target / ".chief-of-staff" / "product-discovery.json"
     plan_path = target / ".chief-of-staff" / "project-plan.json"
     registry_path = target / ".chief-of-staff" / "task-registry.json"
+    approval_path = target / ".chief-of-staff" / "approval-queue.json"
     pin_state_path = target / ".chief-of-staff" / "pin-state.json"
+    if project_path.is_file():
+        try:
+            project = json.loads(project_path.read_text(encoding="utf-8"))
+            if isinstance(project, dict) and project.get("agent_os_mode") == AGENT_OS_MODE:
+                try:
+                    agent_os._verify_manifest(target)
+                except agent_os.AgentOsError as exc:
+                    errors.append(f"Agent OS contract: {exc}")
+                else:
+                    gated_legacy = (target / ".agent-os" / "legacy-gate-receipt.json").is_file()
+                    try:
+                        agent_os.verify_required_legacy_receipt(
+                            target, legacy_trust_root
+                        )
+                    except agent_os.AgentOsError as exc:
+                        errors.append(f"Agent OS required receipt: {exc}")
+                    if not gated_legacy:
+                        expected_chief_agents = render(
+                            TEMPLATE_ROOT / "AGENTS.md", project.get("project_name", "")
+                        ).decode("utf-8")
+                        try:
+                            agents_text = (target / "AGENTS.md").read_text(encoding="utf-8")
+                        except (OSError, UnicodeDecodeError) as exc:
+                            errors.append(f"Agent OS preserved Chief instructions: {exc}")
+                        else:
+                            if not compatible_chief_agents(agents_text, expected_chief_agents):
+                                errors.append(
+                                    "Agent OS preserved Chief instructions are not a recognized managed variant"
+                                )
+            if isinstance(project, dict) and project.get("delivery_ledger_mode") == "strict":
+                try:
+                    Ledger(target / STRICT_LEDGER_PATH).snapshot()
+                except LedgerError as exc:
+                    errors.append(f"strict delivery ledger: {exc}")
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            pass
     if project_path.is_file() and pin_state_path.is_file():
         try:
             project = json.loads(project_path.read_text(encoding="utf-8"))
@@ -1422,12 +1507,47 @@ def validate(target: Path) -> list[str]:
                 errors.append("grandmothered optional Chief preserves pin_primary_task=true pending review")
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             pass
-    if all(path.is_file() for path in (project_path, discovery_path, plan_path, registry_path)):
+    if all(path.is_file() for path in (project_path, discovery_path, plan_path, registry_path, approval_path)):
         try:
             project = json.loads(project_path.read_text(encoding="utf-8"))
             discovery = json.loads(discovery_path.read_text(encoding="utf-8"))
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
             registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            approvals = json.loads(approval_path.read_text(encoding="utf-8"))
+            try:
+                # Bind every continuous evidence read to one no-follow root fd;
+                # do not reopen ``target`` through Path.resolve after checks.
+                from retry_policy import _open_project_directory, _read_retained_json, _require_disjoint_directories
+                evidence_fd = _open_project_directory(target)
+                try:
+                    if plan.get("execution_packages") is None:
+                        continuous_execution.validate_execution_records(plan, registry, approvals)
+                    else:
+                        native_root = project.get("execution_native_observation_root") if isinstance(project, dict) else None
+                        if not isinstance(native_root, str) or not native_root:
+                            raise continuous_execution.ContinuousExecutionError("continuous execution requires execution_native_observation_root")
+                        native_fd = _open_project_directory(Path(native_root))
+                        try:
+                            _require_disjoint_directories(evidence_fd, native_fd)
+                            def native_loader(ref, digest, label):
+                                if not isinstance(ref, str) or not ref.startswith("native://"):
+                                    raise continuous_execution.ContinuousExecutionError("native observation reference must start with native://")
+                                return _read_retained_json(native_fd, "repo://" + ref[len("native://"):], digest, label)
+                            continuous_execution.validate_execution_records(
+                                plan, registry, approvals,
+                                retained_loader=lambda ref, digest, label: _read_retained_json(evidence_fd, ref, digest, label),
+                                native_observation_loader=native_loader,
+                                submitting_project=target,
+                                native_observation_root=Path(native_root),
+                            )
+                        finally:
+                            os.close(native_fd)
+                finally:
+                    os.close(evidence_fd)
+            except continuous_execution.ContinuousExecutionError as exc:
+                errors.append(f"continuous execution records: {exc}")
+            except Exception as exc:
+                errors.append(f"continuous execution records: {exc}")
             tasks = registry.get("tasks") if isinstance(registry, dict) else None
             phases = plan.get("phases") if isinstance(plan, dict) else None
             task_list = tasks if isinstance(tasks, list) else []
@@ -1641,17 +1761,310 @@ def validate(target: Path) -> list[str]:
     return errors
 
 
+def fresh_agent_os_files(project_name: str, chief_agents: bytes) -> dict[Path, bytes]:
+    """Render Agent OS around the Chief entrypoint without making it a legacy requirement."""
+    try:
+        preserved_chief_agents = chief_agents.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("template AGENTS.md must be UTF-8") from exc
+    files = agent_os.render_contract_files(
+        project_name, codex_instructions=preserved_chief_agents
+    )
+    return {Path(relative): data for relative, data in files.items()}
+
+
+def unsafe_destination(target: Path, destination: Path) -> bool:
+    """Reject a managed path whose parent traversal crosses a symlink."""
+    try:
+        relative = destination.relative_to(target)
+    except ValueError:
+        return True
+    cursor = target
+    for part in relative.parts[:-1]:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            return True
+    return destination.is_symlink()
+
+
+def transactional_write(
+    target: Path,
+    planned: list[tuple[Path, bytes]],
+    *,
+    fail_after_writes: int | None = None,
+    post_write_check: Callable[[], list[str]] | None = None,
+    interrupt_after_backups: int | None = None,
+    fail_restore: bool = False,
+) -> None:
+    """Replace a preflighted plan atomically and restore every replaced byte on failure."""
+    destinations = [destination for destination, _ in planned]
+    if len(destinations) != len(set(destinations)):
+        raise WriteTransactionError("transaction plan has duplicate destinations")
+    parent = target.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=".chief-stage-", dir=parent))
+    created_directories: list[Path] = []
+    created_destinations: list[Path] = []
+    backups: dict[Path, Path] = {}
+    writes = 0
+    backup_count = 0
+    remove_staging = True
+    try:
+        for destination, data in planned:
+            relative = destination.relative_to(target)
+            staged = staging / relative
+            staged.parent.mkdir(parents=True, exist_ok=True)
+            staged.write_bytes(data)
+        for destination, _ in planned:
+            relative = destination.relative_to(target)
+            missing_directories: list[Path] = []
+            parent_directory = destination.parent
+            while not parent_directory.exists():
+                missing_directories.append(parent_directory)
+                parent_directory = parent_directory.parent
+            for directory in reversed(missing_directories):
+                directory.mkdir()
+                created_directories.append(directory)
+            if destination.exists():
+                backup = staging / ".rollback" / relative
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(destination, backup)
+                backups[destination] = backup
+                backup_count += 1
+                if (
+                    interrupt_after_backups is not None
+                    and backup_count >= interrupt_after_backups
+                ):
+                    raise KeyboardInterrupt()
+            else:
+                created_destinations.append(destination)
+            if fail_after_writes is not None and writes >= fail_after_writes:
+                raise OSError("injected transaction write failure")
+            os.replace(staging / relative, destination)
+            writes += 1
+        if post_write_check is not None:
+            errors = post_write_check()
+            if errors:
+                raise WriteTransactionError("post-write validation failed: " + "; ".join(errors))
+    except BaseException as exc:
+        recovery_errors: list[OSError] = []
+        for destination in reversed(created_destinations):
+            try:
+                if destination.exists() or destination.is_symlink():
+                    destination.unlink()
+            except OSError as recovery_error:
+                recovery_errors.append(recovery_error)
+        for destination, backup in backups.items():
+            try:
+                if destination.exists() or destination.is_symlink():
+                    destination.unlink()
+                if fail_restore:
+                    raise OSError("injected recovery restore failure")
+                if backup.exists():
+                    os.replace(backup, destination)
+            except OSError as recovery_error:
+                recovery_errors.append(recovery_error)
+        for directory in reversed(created_directories):
+            try:
+                directory.rmdir()
+            except OSError as recovery_error:
+                recovery_errors.append(recovery_error)
+        if recovery_errors:
+            remove_staging = False
+            raise RecoveryIncompleteError(staging) from exc
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
+        if isinstance(exc, Exception):
+            raise WriteTransactionError("transaction failed; staged writes were rolled back") from exc
+        raise
+    finally:
+        if remove_staging:
+            shutil.rmtree(staging, ignore_errors=True)
+
+
+def compatible_chief_agents(text: str, expected: str) -> bool:
+    """Accept only the managed Chief instruction variants that older init runs upgrade."""
+    try:
+        preserved = agent_os.extract_preserved_legacy_agents(text)
+    except agent_os.AgentOsError:
+        return False
+    if preserved is None:
+        marker = "\n## Preserved legacy instructions\n\n"
+        if marker not in text:
+            return False
+        preserved = text.split(marker, 1)[1]
+    # Immutable full payload from the observed old managed Creative contract.
+    # Do not recreate this variant by transforming a newer template: only its
+    # exact retained bytes have compatibility status.
+    known_one_cycle_payload_sha256 = "486737cd990a2c1389dc14a92df7cf291c2a8c31e227e4f80f3380044ba8d8d5"
+    if hashlib.sha256(preserved.encode("utf-8")).hexdigest() == known_one_cycle_payload_sha256:
+        return True
+    variants = {expected}
+    variants.add(
+        "\n".join(
+            line
+            for line in expected.splitlines()
+            if "automation inheritance" not in line
+            and "configuration reference or update receipt is not automation proof" not in line
+        )
+        + "\n"
+    )
+    portability_start = expected.index("\n## Project path portability\n")
+    portability_end = expected.index(
+        "\n## Effective throughput and durable goals\n", portability_start
+    )
+    variants.add(expected[:portability_start] + expected[portability_end:])
+    variants.add(expected.replace(
+        "Optional slots default to six and remain bounded by observed capacity. "
+        "Historically retained slots are grandmothered optional Chiefs; they remain "
+        "unchanged pending value review and do not inherit automatically. Protect every "
+        "manual non-Chief pin.",
+        "Optional slots default to six and remain bounded by observed capacity. Protect "
+        "every manual non-Chief pin.",
+    ))
+    return preserved in variants
+
+
+def migrate_agent_os(
+    target: Path,
+    project_name: str,
+    *,
+    fail_after_writes: int | None = None,
+    fail_post_validation: bool = False,
+    legacy_agents_gate: str | None = None,
+    expected_legacy_agents_gate_sha256: str | None = None,
+    legacy_trust_root: str | None = None,
+) -> int:
+    """Explicitly promote one existing Chief project from legacy Agent OS mode."""
+    project_path = target / ".chief-of-staff" / "project.json"
+    project = read_json_object(project_path)
+    if project is None:
+        print("ERROR: --migrate-agent-os requires an existing Chief project", file=sys.stderr)
+        return 2
+    if project.get("project_name") != project_name:
+        print("ERROR: --project-name must match the existing Chief project", file=sys.stderr)
+        return 2
+    if project.get("agent_os_mode") is None and project.get("agent_os_manifest") is not None:
+        print("ERROR: legacy Agent OS state is incomplete", file=sys.stderr)
+        return 2
+    if project.get("agent_os_mode") not in {None, AGENT_OS_MODE}:
+        print("ERROR: Agent OS mode is invalid", file=sys.stderr)
+        return 2
+
+    if project.get("agent_os_mode") == AGENT_OS_MODE:
+        errors = validate(target, legacy_trust_root=legacy_trust_root)
+        if errors:
+            for error in errors:
+                print(f"ERROR: {error}", file=sys.stderr)
+            return 1
+        print(f"Chief of Staff Agent OS migrated: {target}")
+        return 0
+
+    agents_path = target / "AGENTS.md"
+    gate_args = (
+        legacy_agents_gate,
+        expected_legacy_agents_gate_sha256,
+        legacy_trust_root,
+    )
+    if any(gate_args) and not all(gate_args):
+        print(
+            "ERROR: Agent OS migration requires gate path, expected gate SHA-256, "
+            "and external trust root together",
+            file=sys.stderr,
+        )
+        return 2
+    receipt_data: bytes | None = None
+    try:
+        legacy_agents = agents_path.read_bytes()
+        contract_files = fresh_agent_os_files(project_name, legacy_agents)
+        if all(gate_args):
+            receipt = validate_gate(
+                target,
+                Path(legacy_agents_gate),
+                Path(legacy_trust_root),
+                expected_legacy_agents_gate_sha256,
+            )
+            validate_candidate_binding(
+                Path(legacy_agents_gate),
+                Path(legacy_trust_root),
+                skill_root=SKILL_ROOT,
+                agent_os_schema=agent_os.AGENT_OS_SCHEMA,
+                source_versions=agent_os.SOURCE_VERSIONS,
+                contract_fingerprint_sha256=agent_os.contract_fingerprint(),
+            )
+            receipt_data = encoded_json(receipt)
+            contract_files[Path(".agent-os/legacy-gate-receipt.json")] = receipt_data
+    except (OSError, UnicodeDecodeError, ValueError, LegacyGateError) as exc:
+        print(f"ERROR: Agent OS migration failed: {exc}", file=sys.stderr)
+        return 2
+    if unsafe_destination(target, project_path):
+        print(
+            "ERROR: Agent OS migration failed: unsafe destination: "
+            ".chief-of-staff/project.json",
+            file=sys.stderr,
+        )
+        return 2
+    conflicts: list[Path] = []
+    for relative in contract_files:
+        destination = target / relative
+        if unsafe_destination(target, destination):
+            conflicts.append(relative)
+        elif destination.exists() and relative != Path("AGENTS.md"):
+            conflicts.append(relative)
+    if conflicts:
+        print(
+            "ERROR: Agent OS migration failed: conflict: existing destination(s): "
+            + ", ".join(str(relative) for relative in conflicts),
+            file=sys.stderr,
+        )
+        return 2
+
+    promoted_project = dict(project)
+    promoted_project["agent_os_mode"] = AGENT_OS_MODE
+    promoted_project["agent_os_manifest"] = AGENT_OS_MANIFEST
+    planned = [
+        (target / relative, data)
+        for relative, data in sorted(contract_files.items())
+    ]
+    planned.append((project_path, encoded_json(promoted_project)))
+
+    def post_write_check() -> list[str]:
+        if fail_post_validation:
+            return ["injected post-write validation failure"]
+        return validate(target, legacy_trust_root=legacy_trust_root)
+
+    try:
+        transactional_write(
+            target,
+            planned,
+            fail_after_writes=fail_after_writes,
+            post_write_check=post_write_check,
+        )
+    except WriteTransactionError as exc:
+        print(f"ERROR: Agent OS migration failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Chief of Staff Agent OS migrated: {target}")
+    return 0
+
+
 def initialize(
     target: Path,
     project_name: str,
     preferences: Optional[dict] = None,
     persist_preferences: bool = False,
+    *,
+    fail_after_writes: int | None = None,
+    delivery_ledger_mode: str | None = None,
 ) -> int:
     files = template_files()
     conflicts: list[Path] = []
     planned: list[tuple[Path, bytes]] = []
 
     existing_project = read_json_object(target / ".chief-of-staff" / "project.json")
+    agent_os_required = (
+        existing_project is None
+        or existing_project.get("agent_os_mode") == AGENT_OS_MODE
+    )
     discovery_path = target / ".chief-of-staff" / "product-discovery.json"
     pin_state_path = target / ".chief-of-staff" / "pin-state.json"
     existing_pin_state = read_json_object(pin_state_path)
@@ -1695,6 +2108,8 @@ def initialize(
     for source, relative in files:
         destination = target / relative
         expected = render(source, project_name, preferences)
+        if relative == Path("AGENTS.md") and agent_os_required:
+            continue
         if (
             relative == Path(".chief-of-staff/product-discovery.json")
             and legacy_upgrade
@@ -1777,6 +2192,26 @@ def initialize(
                 try:
                     existing_project = json.loads(destination.read_text(encoding="utf-8"))
                     expected_project = json.loads(expected.decode("utf-8"))
+                    legacy_agent_os_project = dict(expected_project)
+                    legacy_agent_os_project.pop("agent_os_mode", None)
+                    legacy_agent_os_project.pop("agent_os_manifest", None)
+                    if existing_project == legacy_agent_os_project:
+                        continue
+                    # A project may explicitly retain a stricter repair bound.
+                    # Normal initializer reruns must not turn that safe choice
+                    # into a conflict or silently normalize it back to three.
+                    if not legacy_upgrade:
+                        rerun_project = dict(expected_project)
+                        if "max_repair_cycles" in existing_project:
+                            rerun_project["max_repair_cycles"] = existing_project["max_repair_cycles"]
+                        if existing_project.get("delivery_ledger_mode") == "strict":
+                            for key in ("delivery_ledger_mode", "delivery_ledger_path", "delivery_ledger_reconcile_triggers"):
+                                rerun_project[key] = existing_project[key]
+                        if all(
+                            existing_project.get(key) == value
+                            for key, value in rerun_project.items()
+                        ):
+                            continue
                     grandmothered_project = dict(expected_project)
                     grandmothered_project["pin_primary_task"] = True
                     if retained_pin_compatibility and existing_project == grandmothered_project:
@@ -1843,6 +2278,7 @@ def initialize(
                         "durable_goal_enabled", "execution_mode", "max_parallel_phase_lanes",
                         "no_evidence_checkpoint_limit", "visual_selection_gate",
                         "visual_review_hub_title",
+                        "agent_os_mode", "agent_os_manifest",
                         "auto_advance_low_impact", "proactive_follow_up",
                     ):
                         previous_dynamic.pop(key, None)
@@ -1868,7 +2304,16 @@ def initialize(
                 goal_closure = """\n## Goal closure and active progression\n\n- Before implementation, the Chief proposes and asks the user to confirm the final goal, deliverables, acceptance criteria, non-goals, and constraints. A new project permits only bounded read-only discovery before confirmation. In a migrated project, already-running non-high-impact tasks may finish, but no new task or phase starts before confirmation.\n- A phase completion is not project completion. The project is complete only when the goal is confirmed and every final acceptance criterion has non-empty verification evidence in `project-plan.json`.\n- Until completion, keep a phase task queued, running, or needing attention unless the project is explicitly waiting for the user or blocked with evidence and a release condition. If all phase tasks stop while final acceptance is unmet, immediately dispatch the next safe in-scope phase.\n- Follow all active tasks with bounded waits. After any completion, failure, or attention event, snapshot every active task before deciding what comes next.\n- A Chief report for an unfinished project always includes the final goal, current phase, verified progress, active roles, gap to delivery, and next checkpoint, even when no approval is pending.\n- Management depth 1 is the Chief, depth 2 is a phase lead, and depth 3 is an execution role. Phase leads may create depth-3 tasks only when explicitly authorized in their contract. Temporary subagents cannot create durable roles. Depth 4 or deeper requires an approved `depth_expansion` request.\n- The Chief is the sole writer of `project-plan.json`, `task-registry.json`, `approval-queue.json`, and consolidated status. Low-impact in-scope phases advance automatically; protected actions retain their separate approval requirements.\n"""
                 product_discovery_gate = """\n## Product classification and discovery gate\n\n- After the initial mission and goal boundary are confirmed, classify the project in `.chief-of-staff/product-discovery.json` before creating another phase or role. `deliverable_project` creates or materially changes a product, service, code, design, content asset, or other acceptance-tested deliverable. `coordination_only` is limited to synchronization, pushing an already-decided change, meeting summaries, filing/process follow-up, or read-only audit/aggregation and requires a concrete exemption reason.\n- A scope expansion from coordination into product creation immediately invalidates the exemption. Reclassify as `deliverable_project`, appoint one Product Manager phase lead at management depth 2, and complete the gate before production execution.\n- The Product Manager is not a Chief and does not create a second control plane. It owns four bounded evidence lanes: project initiation, requirements analysis, market research, and advisory architecture feasibility. Each temporary helper is depth 3, read-only by default, cannot delegate again, and cannot create a durable role. If the runtime lacks subagents, the Product Manager completes all four lanes in one task, records the runtime limitation, and preserves separate artifacts and evidence for every lane.\n- Before the gate passes, permit only goal clarification, product-discovery research, and reversible planning. Do not create or start engineering, design, content production, or another production-execution role or phase. Run `python3 scripts/init_project.py --target <project-root> --check` immediately before any production task is created or started; a nonzero result is a hard stop.\n- Gate evidence never invents interviews, surveys, market data, or policy findings. Human outreach, survey delivery, paid data, restricted access, and every protected action retain their separate approval gates. Architecture discovery is advisory and cannot bind the later Technical Lead. Experience goals may be recorded, but clickable NON-FINAL visual options still go only to the Creative Director.\n- Under `exception_only`, the project Chief reviews routine Product Manager and helper evidence. Escalate only a material unresolved product direction, safety/permission/ownership conflict, protected action, or final project acceptance. Continuation policy advances safe discovery work but never treats a pending gate as production authorization.\n"""
                 report_gate = """\n## Report approval gate\n\nWhen `.chief-of-staff/project.json` sets `report_approval_required` to `true`, every milestone report and final handoff includes a stable `<task_id>:<report_sequence>` ID and requests `批准` or `退回修改`. The child opens a blocking review request so Codex marks it as needing attention; if the host cannot do that, it ends with `REVIEW_REQUIRED: <request_id>`. The Chief snapshots all active children after any wake-up, records every unseen request in `approval-queue.json`, and batches pending reports for the user in the Chief task. Only the user's explicit decision relayed by the Chief clears the gate.\n"""
-                previous_product_discovery = current_text.replace(product_discovery_gate, "")
+                portability_start = current_text.index("\n## Project path portability\n")
+                portability_end = current_text.index(
+                    "\n## Effective throughput and durable goals\n", portability_start
+                )
+                previous_path_portability = (
+                    current_text[:portability_start] + current_text[portability_end:]
+                )
+                previous_product_discovery = previous_path_portability.replace(
+                    product_discovery_gate, ""
+                )
                 previous_product_discovery = previous_product_discovery.replace(
                     "- `.chief-of-staff/product-discovery.json`: project classification, Product Manager ownership, four evidence lanes, required discovery deliverables, evidence index, legacy allowlist, and gate decision.\n",
                     "",
@@ -1893,6 +2338,7 @@ def initialize(
                     "- A task is the Chief of Staff only when its title or initiating prompt explicitly assigns that role.",
                 )
                 compatibility_variants = {
+                    previous_path_portability.encode("utf-8"),
                     previous_peer_coordination.encode("utf-8"),
                     previous_project_scoping.encode("utf-8"),
                     previous_current.encode("utf-8"), previous_text.encode("utf-8"),
@@ -1905,7 +2351,7 @@ def initialize(
                     current_text.replace(automation_inheritance_lines, "").encode("utf-8")
                 )
                 narrow_pin_lines = """- Ordinary project Chiefs default to unpinned (`pin_primary_task=false`). That state is not a defect and never authorizes creating a successor, asking the operator to pin it, or archiving its predecessor.
-- Only the central `general_office`, `todo`, `creative_director`, `context_migration_monitor`, and `testing_director` roles require a pin. The Testing Director owns cross-project quality policy and evidence review, reports through the general office, and cannot independently approve project writes. An optional product Chief may be created, pinned, unpinned, replaced, or inherit a pin only after the general office recommends it and the operator explicitly approves that exact change. Approval to appoint or pin does not confirm the project goal or authorize engineering, design, content, or production; the Product Manager discovery gate still applies.
+- Only the central `general_office`, `todo`, `creative_director`, and `context_migration_monitor` roles require a pin. The Testing Director is ordinary/default-unpinned, coordination-only, and occupies no optional product slot; it owns cross-project quality evidence and cannot independently approve project writes. An optional product Chief may be created, pinned, unpinned, replaced, or inherit a pin only after the general office recommends it and the operator explicitly approves that exact change. Approval to appoint or pin does not confirm the project goal or authorize engineering, design, content, or production; the Product Manager discovery gate still applies.
 - Optional slots default to six and remain bounded by observed capacity. Historically retained slots are grandmothered optional Chiefs; they remain unchanged pending value review and do not inherit automatically. Protect every manual non-Chief pin. If capacity is full, produce only a paired replacement recommendation; never evict automatically. The general office may present at most three candidates in one pending pack, and TODO only verifies identity, currentness, duplication, evidence freshness, capacity, and lineage. Exclude paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs by default; the central context migration monitor remains a mandatory exception.
 - A successful pin API receipt is not proof. For a mandatory core role or operator-approved optional lineage, call `list_threads` and require the exact task ID in `pinnedThreads`; record a failed independent check as `pin_verification_failed`. A capacity-full result is not a task defect.
 - Only an eligible mandatory or approved lineage may use successor pin inheritance. After a safe same-lineage core bundle handoff candidate, create at most one replacement; require live automation parity and verify its exact ID in a fresh `pinnedThreads` result before final `MIGRATION_READY`, takeover, or authoritative-entry switching. Archive the predecessor only after verified takeover. Never delete a predecessor, duplicate a Chief, change scope or pause state, or bypass an approval.
@@ -1936,6 +2382,40 @@ def initialize(
         else:
             planned.append((destination, expected))
 
+    if existing_project is None:
+        chief_agents = render(TEMPLATE_ROOT / "AGENTS.md", project_name, preferences)
+        for relative, expected in fresh_agent_os_files(project_name, chief_agents).items():
+            destination = target / relative
+            cursor = target
+            unsafe_parent = False
+            for part in relative.parts[:-1]:
+                cursor = cursor / part
+                if cursor.is_symlink():
+                    unsafe_parent = True
+                    break
+            if unsafe_parent or destination.is_symlink() or destination.exists():
+                conflicts.append(relative)
+                continue
+            planned.append((destination, expected))
+    elif agent_os_required:
+        agents_path = target / "AGENTS.md"
+        expected_chief_agents = render(
+            TEMPLATE_ROOT / "AGENTS.md", project_name, preferences
+        ).decode("utf-8")
+        try:
+            agents_text = agents_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            agents_text = ""
+        if compatible_chief_agents(agents_text, expected_chief_agents):
+            for relative, expected in fresh_agent_os_files(
+                project_name, expected_chief_agents.encode("utf-8")
+            ).items():
+                if relative not in {Path("AGENTS.md"), Path(AGENT_OS_MANIFEST)}:
+                    continue
+                destination = target / relative
+                if destination.is_file() and destination.read_bytes() != expected:
+                    planned.append((destination, expected))
+
     if preferences is not None and persist_preferences:
         preference_destination = target / ".chief-of-staff" / "preferences.json"
         preference_expected = encoded_json(preferences)
@@ -1947,6 +2427,33 @@ def initialize(
         else:
             planned.append((preference_destination, preference_expected))
 
+    if delivery_ledger_mode == "strict":
+        project_path = target / ".chief-of-staff" / "project.json"
+        current = existing_project if existing_project is not None else json.loads(render(TEMPLATE_ROOT / ".chief-of-staff" / "project.json", project_name, preferences))
+        if project_path.is_symlink() or project_path.parent.is_symlink():
+            conflicts.append(Path(".chief-of-staff/project.json"))
+        else:
+            updated = dict(current)
+            updated.update({"delivery_ledger_mode": "strict", "delivery_ledger_path": STRICT_LEDGER_PATH, "delivery_ledger_reconcile_triggers": STRICT_LEDGER_TRIGGERS})
+            state_errors: list[str] = []
+            validate_state(Path(".chief-of-staff/project.json"), updated, state_errors)
+            if state_errors:
+                conflicts.append(Path(".chief-of-staff/project.json"))
+            else:
+                conflicts = [item for item in conflicts if item != Path(".chief-of-staff/project.json")]
+                planned = [(path, data) for path, data in planned if path != project_path]
+                planned.append((project_path, encoded_json(updated)))
+                ledger_snapshot = target / STRICT_LEDGER_PATH / "snapshot.json"
+                if ledger_snapshot.is_symlink() or ledger_snapshot.parent.is_symlink():
+                    conflicts.append(Path(STRICT_LEDGER_PATH) / "snapshot.json")
+                elif ledger_snapshot.exists():
+                    try:
+                        Ledger(ledger_snapshot.parent).snapshot()
+                    except LedgerError:
+                        conflicts.append(Path(STRICT_LEDGER_PATH) / "snapshot.json")
+                else:
+                    planned.append((ledger_snapshot, b'{"event_ids":{},"reports":{},"schema":"CHIEF_DELIVERY_LEDGER_V1"}\n'))
+
     if conflicts:
         print("Chief of Staff initialization stopped; existing files differ:", file=sys.stderr)
         for relative in conflicts:
@@ -1954,15 +2461,15 @@ def initialize(
         print("No files were written. Reconcile or move the conflicts, then retry.", file=sys.stderr)
         return 2
 
-    target.mkdir(parents=True, exist_ok=True)
-    for destination, data in planned:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(data)
-
-    errors = validate(target)
-    if errors:
-        for error in errors:
-            print(f"ERROR: {error}", file=sys.stderr)
+    try:
+        transactional_write(
+            target,
+            planned,
+            fail_after_writes=fail_after_writes,
+            post_write_check=lambda: validate(target),
+        )
+    except WriteTransactionError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
     action = "initialized" if planned else "already initialized"
@@ -1985,6 +2492,24 @@ def main() -> int:
         help="Validated global profile; policies are projected without copying the profile",
     )
     parser.add_argument("--check", action="store_true", help="Validate an initialized project without writing")
+    parser.add_argument(
+        "--migrate-agent-os",
+        action="store_true",
+        help="Explicitly add Agent OS V1 to an existing legacy Chief project",
+    )
+    parser.add_argument(
+        "--legacy-agents-gate",
+        help="absolute external approved legacy gate; only for an explicit gated migration",
+    )
+    parser.add_argument(
+        "--expected-legacy-agents-gate-sha256",
+        help="caller-pinned SHA-256 of the external legacy gate",
+    )
+    parser.add_argument(
+        "--legacy-trust-root",
+        help="absolute external trust root for gated migration or required-mode check",
+    )
+    parser.add_argument("--delivery-ledger-mode", choices=("strict",), help="Explicitly adopt strict local delivery reconciliation")
     args = parser.parse_args()
 
     try:
@@ -1993,7 +2518,13 @@ def main() -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
-    project_name = (args.project_name or target.name).strip()
+    stored_project = (
+        read_json_object(target / ".chief-of-staff" / "project.json")
+        if args.migrate_agent_os and args.project_name is None
+        else None
+    )
+    stored_name = stored_project.get("project_name") if stored_project else None
+    project_name = (args.project_name or stored_name or target.name).strip()
     if not project_name or any(ord(character) < 32 for character in project_name):
         print("ERROR: project name must be a non-empty single line", file=sys.stderr)
         return 2
@@ -2016,18 +2547,39 @@ def main() -> int:
             return 2
 
     if args.check:
-        errors = validate(target)
+        if args.migrate_agent_os:
+            print("ERROR: --check and --migrate-agent-os cannot be combined", file=sys.stderr)
+            return 2
+        if args.legacy_agents_gate or args.expected_legacy_agents_gate_sha256:
+            print("ERROR: gate path and expected gate SHA-256 are only valid with --migrate-agent-os", file=sys.stderr)
+            return 2
+        errors = validate(target, legacy_trust_root=args.legacy_trust_root)
         if errors:
             for error in errors:
                 print(f"ERROR: {error}", file=sys.stderr)
             return 1
         print(f"Chief of Staff project is valid: {target}")
         return 0
+    if args.migrate_agent_os:
+        if selected_profile:
+            print("ERROR: preference profiles cannot be applied during Agent OS migration", file=sys.stderr)
+            return 2
+        return migrate_agent_os(
+            target,
+            project_name,
+            legacy_agents_gate=args.legacy_agents_gate,
+            expected_legacy_agents_gate_sha256=args.expected_legacy_agents_gate_sha256,
+            legacy_trust_root=args.legacy_trust_root,
+        )
+    if any((args.legacy_agents_gate, args.expected_legacy_agents_gate_sha256, args.legacy_trust_root)):
+        print("ERROR: legacy gate inputs require --migrate-agent-os or --check", file=sys.stderr)
+        return 2
     return initialize(
         target,
         project_name,
         preferences,
         persist_preferences=bool(args.preferences),
+        delivery_ledger_mode=args.delivery_ledger_mode,
     )
 
 

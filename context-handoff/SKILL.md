@@ -36,6 +36,8 @@ Do not migrate mid-response, mid-write, during a tool call, or while a required 
 
 For Chief projects, reference all `.chief-of-staff` state files and preserve parents, phases, depth, peer edges, user actions, and cursors. If exact dirty-worktree continuity cannot be proven, keep the predecessor active and ask the user to choose the directory.
 
-Use a per-lineage lock and migration number to prevent duplicates. Rebuild and re-check once after failure; on a second failure keep the predecessor active and create one explicit user-attention request.
+Use `capture --safe-boundary-id <stable-id>` for an atomic build-and-immediate-verify checkpoint attempt. Re-read the newest nonzero token sample and write access first. Each source-task safe boundary permits at most one attempt and uses the next unused monotonic migration number without overwriting or deleting an older bundle.
+
+Treat only `source session changed after capture` and a non-overwriting target-number `File exists` collision as transient capture failures. Continue automatically at a later safe boundary with a new number while the threshold and safety checks still pass; never ask the operator whether to retry. Repeated transient failures enter Chief-owned read-only diagnosis and backoff. Other validation, permission, storage, dirty-worktree, ownership, automation, or pin failures retain their actual gates. Read [references/protocol.md](references/protocol.md) for the bounded retry and stopping contract.
 
 If an already archived predecessor is discovered with a missing binding, repair the successor's automation without unarchiving or deleting the predecessor and without creating a duplicate task or same-duty automation.
