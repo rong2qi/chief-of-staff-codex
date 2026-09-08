@@ -89,6 +89,13 @@ RECOMMENDED_OPERATOR_ONLY_ACTIONS = [
     "failed_or_unverifiable_after_allowed_repair_recheck",
     "override_prior_explicit_operator_denial",
 ]
+APPROVED_DECISION_RELAY_EXACT = {
+    "mode": "todo_direct_exact_words_once",
+    "audit": "general_office_asynchronous_nonblocking",
+    "source": "registered_current_source_chief_only",
+    "visual_route": "creative_director_only",
+    "delivery_is_execution": False,
+}
 AUTONOMY_POLICY_EXACT = {
     "schema": "CHIEF_AUTONOMY_POLICY_V1",
     "enabled": False,
@@ -703,6 +710,26 @@ def _validate_recommended_action_delegation(
             errors.append(f"{label}.{key} is invalid")
 
 
+def _validate_approved_decision_relay(governance: dict[str, Any], errors: list[str]) -> None:
+    """Keep schema-v1 profiles compatible while defaulting this relay off."""
+    section = governance.get("approved_decision_relay")
+    if section is None:
+        return
+    label = "governance_model.approved_decision_relay"
+    if not isinstance(section, dict):
+        errors.append(f"{label} must be an object")
+        return
+    _require_bool(section, "enabled", label, errors)
+    for key, expected in APPROVED_DECISION_RELAY_EXACT.items():
+        if key == "delivery_is_execution":
+            if type(section.get(key)) is not bool or section.get(key) is not False:
+                errors.append(f"{label}.{key} is invalid")
+        elif section.get(key) != expected:
+            errors.append(f"{label}.{key} is invalid")
+    if section.get("enabled") is True and governance.get("enabled") is not True:
+        errors.append("enabled approved_decision_relay requires enabled governance_model")
+
+
 def validate_preferences(profile: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     try:
@@ -744,6 +771,7 @@ def validate_preferences(profile: dict[str, Any]) -> list[str]:
         errors.append("governance_model.auditor_authority must be evidence_only")
     if governance.get("partial_pause_policy") != "affected_surface_only":
         errors.append("governance_model.partial_pause_policy must be affected_surface_only")
+    _validate_approved_decision_relay(governance, errors)
     continuation = governance.get("continuation_policy")
     if not isinstance(continuation, dict):
         errors.append("governance_model.continuation_policy must be an object")
@@ -1281,6 +1309,46 @@ def evaluate_recommended_action(
     }
 
 
+def evaluate_approved_decision_relay(
+    profile: dict[str, Any], decision: dict[str, Any], registry: dict[str, Any]
+) -> dict[str, Any]:
+    """Validate a single TODO relay without sending, approving, or retrying it."""
+    require_valid(profile)
+    policy = profile["governance_model"].get("approved_decision_relay")
+    base = {"delivery_performed": False, "audit_required": False, "operator_actionable_now": False}
+    if not isinstance(policy, dict) or policy.get("enabled") is not True:
+        return {"status": "disabled", **base}
+    if not isinstance(decision, dict) or not isinstance(registry, dict):
+        raise PreferenceError("decision relay and registry must be objects")
+    required = {"stable_id", "original_words", "approved", "kind", "source_chief_id", "current", "delivered", "delivery_failed"}
+    if set(decision) != required:
+        return {"status": "evidence_required", "missing": ["exact_relay_record"], **base}
+    if type(decision["delivered"]) is not bool or type(decision["delivery_failed"]) is not bool:
+        return {"status": "evidence_required", "missing": ["delivery_state_booleans"], **base}
+    if decision["kind"] == "visual_selection":
+        return {"status": "creative_director_only", **base}
+    if decision["kind"] != "nonvisual" or decision["approved"] is not True or decision["current"] is not True:
+        return {"status": "not_approved_current_nonvisual", **base}
+    if not isinstance(decision["stable_id"], str) or not decision["stable_id"].strip() or not isinstance(decision["original_words"], str) or not decision["original_words"].strip() or not isinstance(decision["source_chief_id"], str) or not decision["source_chief_id"].strip():
+        return {"status": "evidence_required", "missing": ["stable_id_original_words_source_chief"], **base}
+    tasks = registry.get("tasks")
+    if not isinstance(tasks, list):
+        return {"status": "evidence_required", "missing": ["registry_tasks"], **base}
+    matches = [task for task in tasks if isinstance(task, dict) and task.get("task_id") == decision["source_chief_id"] and task.get("status") in {"queued", "running", "needs_attention"}]
+    if len(matches) != 1:
+        return {"status": "source_chief_not_unique_current", **base}
+    if decision["delivered"] is True:
+        return {"status": "duplicate_suppressed", **base}
+    if decision["delivery_failed"] is True:
+        return {"status": "delivery_failed_recorded", **base, "audit_required": True}
+    return {
+        "status": "todo_direct_relay_intent",
+        "relay": {"stable_id": decision["stable_id"], "original_words": decision["original_words"], "target_chief_id": decision["source_chief_id"]},
+        **base,
+        "audit_required": True,
+    }
+
+
 def filter_operator_todo_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return only currently actionable items from the two authoritative hubs."""
     if not isinstance(items, list):
@@ -1356,7 +1424,8 @@ def managed_agents_block(profile_path: Path, renderer_path: Path) -> str:
 - Name every durable Chief task with the exact prefix `Chief of `. The configured general-office and TODO tasks plus the non-Chief context migration monitor are title-prefix exceptions. Other non-Chief durable roles keep the `Role｜Work outcome` convention. Treat a user-supplied title as content guidance, not permission to drop the Chief prefix unless it names one of those registered exceptions.
 - Apply `report_review_mode`. In `exception_only`, the project Chief reviews routine child progress and final handoffs against their contracts without asking the operator. Escalate only goal confirmation, material product choices, visual choices through the Creative Director, protected actions, safety/security, ownership or scope conflicts, failed or unverifiable work, depth expansion, and final project completion.
 - If `governance_model.enabled` is true, treat the operator as chair: project Chiefs own routine administration, auditors have evidence-only authority, roles follow the registered chain of command, and an unresolved decision freezes only its affected write surface. Route non-visual statutory exceptions only to the configured general-office task as `CHAIR_BRIEF_READY`; only that task may emit the operator-facing `USER_ACTION_REQUIRED`. TODO scans only the general office and Creative Director.
-- Apply `pin_governance` narrowly. Ordinary Chiefs default unpinned, and their unpinned state is not a failure. Mandatory pins are limited to the configured general office, TODO, Creative Director, context migration monitor, and their valid successors. The Testing Director is an ordinary, default-unpinned, coordination-only evidence role and occupies neither a mandatory pin nor an optional product slot. An optional product Chief may be pinned, created for pinning, unpinned, or replaced only after a general-office recommendation and the operator's explicit approval; pin approval never confirms the project goal or authorizes engineering, design, production, or bypass of the Product Manager discovery gate.
+- For recurring Testing or Creative execution, each Director must first reuse registered durable subordinate roles by registry ID, owner, and handoff; split independent lanes only when workload materially benefits. The Testing Director keeps sole quality-gate authority and the Creative Director keeps sole visual intake/selection authority. Create a durable subordinate only within existing authorization after duplicate-role and runtime-availability checks; temporary subagents never substitute for those long-running execution roles. If the runtime cannot delegate, record the limitation without claiming delegation occurred.
+- Apply `pin_governance` narrowly. Ordinary Chiefs default unpinned, and their unpinned state is not a failure. Mandatory pins are limited to the configured general office, TODO, Creative Director, context migration monitor, and their valid successors. The Testing Director is an ordinary, default-unpinned, coordination-only evidence role and occupies neither a mandatory pin nor an optional product slot. Reuse the registered Testing Director for applicable independent quality evidence and the registered Creative Director for visual review; the source Chief supplies the frozen candidate, owner, and handoff, while each hub retains its independent boundary. Do not create duplicate Chiefs or substitute temporary subagents for those durable hubs; keep small checks local unless independence is materially useful. An optional product Chief may be pinned, created for pinning, unpinned, or replaced only after a general-office recommendation and the operator's explicit approval; pin approval never confirms the project goal or authorizes engineering, design, production, or bypass of the Product Manager discovery gate.
 - The general office recommends at most three candidates in one pending pack. TODO is read-only and checks identity, currentness, duplication, evidence freshness, observed capacity, and lineage. Preserve manual non-Chief pins. At full capacity, produce only a paired replacement recommendation; never evict automatically. Exclude paused, completed, superseded, migration-cancelled, routine-push, meeting-summary, report-only, and process-only Chiefs by default. A `pinned: true` receipt is not proof; fresh `list_threads` exact-ID presence is required. Only mandatory or operator-approved lineages may use the safe-handoff single-replacement successor path.
 - If `automation_inheritance.enabled` is true, inventory every automation bound to a migrating task with exact ID, name, kind, target task ID, status, schedule, prompt SHA-256, and notification policy. Before takeover, authority switching, or predecessor archival, reuse and rebind each automation to the exact successor task ID. Only when live evidence proves the old automation is absent may one minimal equivalent be created within existing authorization. Preserve schedule, prompt semantics, notification policy, and scope; forbid duplicate active same-duty automations.
 - Automation references and update receipts are not proof. Require a fresh live automation view proving exact target, status, and schedule. Missing or mismatched automation parity records `automation_rebind_failed`, returns `MIGRATION_BLOCKED`, and keeps the predecessor active and unarchived. Takeover requires bundle parity, automation parity, and pin parity when applicable. Historical repair never unarchives or deletes a predecessor and never creates duplicate tasks or automations.
@@ -1365,7 +1434,8 @@ def managed_agents_block(profile_path: Path, renderer_path: Path) -> str:
 - Keep project runtime paths portable. Resolve a caller-selected project-specific environment override when present, then the Git root, then project markers upward from the script/configuration location, then the current project directory. The override is optional. Active state uses a stable `root_id` and project-relative POSIX paths; reject absolute project input, parent traversal, drive syntax, and symlink escape. Register external tools/materials by exact identity, path, permissions, and authorization without making them the project root. Preserve historical absolute-path evidence unchanged but exclude it from active root resolution; portable derivatives use a new hash and `derived_from`. Never default to a fixed volume, user home, temporary directory, machine username, or prior-device path.
 - If `governance_model.continuation_policy.enabled` is true, every project Chief must select and execute the strongest evidence-backed safe in-scope continuation without asking the operator. Do not present stopping, preserving a failed state, or delaying as peer options while a safe continuation exists; the operator will initiate those choices when wanted. Escalate only when continuing itself requires a new permission or creation of a new Chief. An ordinary failure remains Chief-owned while another bounded safe diagnostic, repair, or verification path exists. This policy does not authorize protected actions, bypass the Creative Director visual gate, or conceal safety/security evidence; those constraints determine whether a path is safe and already authorized.
 - If `governance_model.continuation_policy.autonomy_policy.enabled` is true, start a goal with one conditional approval package covering goal, surfaces, action classes, external targets, data class, finite resources, action-time revalidation, stop/rollback, and deferred final decisions. Recheck each action. New permissions, real data, credentials/secrets, production, release/deploy, payment, external send, and platform safety refusals remain separate stops. Use native clickable questions for missing material choices when available; a recommendation or silence is not approval.
-- A newly approved nonvisual operator decision may relay once by stable ID and exact original wording to its registered source Chief, with mandatory asynchronous nonblocking General Office audit. Unknown/stale/duplicate IDs do not relay; delivery/ACK is not execution or Testing evidence. Initial permission requests remain General-Office-only; visual decisions remain Creative-Director-only.
+- A newly recorded `preparation` must be exactly one of `rename_or_move_only`, `packaging_path_correction`, or `material_evidence_completion`, with an immutable retained `semantic_invariance_evidence_ref` plus SHA-256 evidence bound to its event ID, scope, and class before journal mutation. It does not debit a candidate-defect cycle; a behavior or security correction remains an exact candidate defect. Legacy retained records may replay without being reclassified, and no preparation changes prior stops, permissions, or consumed budgets.
+- Only if `governance_model.approved_decision_relay.enabled` is true, TODO may relay an already-approved nonvisual operator decision once by stable ID and exact original wording directly to its one registered current source Chief, with mandatory asynchronous nonblocking General Office audit. TODO has transport authority only: it cannot approve or change business approval state. Unknown/stale/duplicate/delivery-failed IDs retain evidence without blind resend or a tool fallback; delivery/ACK is not execution or Testing evidence. Initial permission requests remain General-Office-only; visual decisions remain Creative-Director-only.
 - Legacy repair limits remain unchanged. Under enabled autonomy policy, a genuine phase covered by the original conditional package may renew only its phase-local defect allowance and supersede only recorded numerical local-preparation limits; permission, safety, denial, paused, real-data, production, and external stops remain. Native clickable questions collect missing material choices when supported; they never bypass platform permission or safety limits.
 - A continuous execution exception is never implied by this preference: it needs one exact approved package bound to existing plan, registry, approval, retry, and delivery-ledger records. Preserve explicit one-shot, denial, paused/archive, finite resource, independent-review, and protected-action stops; a host must only return a bounded local intent and never send, wake, or grant access itself.
 - If `governance_model.continuation_policy.recommended_action_delegation.enabled` is true, the general office directly standing-delegates one evidence-complete, fixed-surface, nonproduction action from the exact allowlist and records `DELEGATED_RECOMMENDATION_EXECUTED: <stable_id>` for the source Chief. Require explicit `external_send=false` plus the selected class's exact allowlist, bounds, ownership/read-only, stop/rollback, and one-shot or one-repair-cycle evidence before delegation. Do not emit `USER_ACTION_REQUIRED`, a suggested reply, or a TODO item for delegated work. Prior explicit operator denial and every configured operator-only action remain reserved; ambiguity, incomplete evidence, unresolved safety dissent, failure, drift, or scope expansion stops delegation and never auto-reruns.

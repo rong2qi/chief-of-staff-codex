@@ -19,6 +19,7 @@ from scripts.preference_lib import (
     atomic_write_json,
     capability_recommendation_pack_id,
     evaluate_capability_discovery,
+    evaluate_approved_decision_relay,
     evaluate_recommended_action,
     filter_operator_todo_items,
     lifecycle_capability_discovery,
@@ -63,9 +64,54 @@ class PreferenceTests(unittest.TestCase):
         block = managed_agents_block(Path("/tmp/profile.json"), Path("/tmp/render.py"))
         self.assertIn("Initial permission requests remain General-Office-only", block)
         self.assertIn("mandatory asynchronous nonblocking General Office audit", block)
+        self.assertIn("approved_decision_relay.enabled", block)
+        self.assertIn("Reuse the registered Testing Director", block)
+        self.assertIn("each Director must first reuse registered durable subordinate roles", block)
+        self.assertIn("runtime cannot delegate, record the limitation", block)
+        self.assertIn("packaging_path_correction", block)
+        self.assertIn("semantic_invariance_evidence_ref", block)
         self.assertIn("native clickable questions", block)
         self.assertIn("numerical local-preparation limits", block)
         self.assertIn("never bypass platform permission or safety limits", block)
+
+    def test_approved_decision_relay_is_opt_in_and_preserves_transport_boundary(self):
+        profile = self.delegated_profile()
+        decision = {
+            "stable_id": "DEC-1", "original_words": "Proceed with the local change.",
+            "approved": True, "kind": "nonvisual", "source_chief_id": "chief-1",
+            "current": True, "delivered": False, "delivery_failed": False,
+        }
+        registry = {"tasks": [{"task_id": "chief-1", "status": "running"}]}
+        self.assertEqual(evaluate_approved_decision_relay(profile, decision, registry)["status"], "disabled")
+        profile["governance_model"]["approved_decision_relay"] = {
+            "enabled": True,
+            "mode": "todo_direct_exact_words_once",
+            "audit": "general_office_asynchronous_nonblocking",
+            "source": "registered_current_source_chief_only",
+            "visual_route": "creative_director_only",
+            "delivery_is_execution": False,
+        }
+        result = evaluate_approved_decision_relay(profile, decision, registry)
+        self.assertEqual(result["status"], "todo_direct_relay_intent")
+        self.assertEqual(result["relay"]["original_words"], decision["original_words"])
+        self.assertTrue(result["audit_required"])
+        self.assertFalse(result["delivery_performed"])
+        self.assertEqual(evaluate_approved_decision_relay(profile, {**decision, "delivered": True}, registry)["status"], "duplicate_suppressed")
+        failed = evaluate_approved_decision_relay(profile, {**decision, "delivery_failed": True}, registry)
+        self.assertEqual(failed["status"], "delivery_failed_recorded")
+        self.assertTrue(failed["audit_required"])
+        for invalid in (0, "false"):
+            self.assertEqual(evaluate_approved_decision_relay(profile, {**decision, "delivered": invalid}, registry)["status"], "evidence_required")
+            self.assertEqual(evaluate_approved_decision_relay(profile, {**decision, "delivery_failed": invalid}, registry)["status"], "evidence_required")
+        self.assertEqual(evaluate_approved_decision_relay(profile, {**decision, "kind": "visual_selection"}, registry)["status"], "creative_director_only")
+        for invalid in (0, "false", None):
+            altered = json.loads(json.dumps(profile))
+            altered["governance_model"]["approved_decision_relay"]["delivery_is_execution"] = invalid
+            self.assertTrue(any("delivery_is_execution" in error for error in validate_preferences(altered)))
+
+    def test_missing_decision_relay_section_stays_schema1_compatible(self):
+        profile = self.delegated_profile()
+        self.assertEqual(validate_preferences(profile), [])
     def enabled_pin_profile(self):
         profile = json.loads(
             (ROOT / "assets/operator-preferences.example.json").read_text()

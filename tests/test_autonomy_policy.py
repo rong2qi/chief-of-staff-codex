@@ -170,8 +170,36 @@ class AutonomyPolicyTests(unittest.TestCase):
         missing = dict(action, reverification_passed=False)
         self.assertFalse(autonomy_policy.evaluate_approved_local_action(package, missing, context)["operator_actionable_now"])
         self.assertEqual(autonomy_policy.classify_continuation({"kind": "preparation", "scope": "local setup"}), "preparation")
+        self.assertEqual(autonomy_policy.classify_continuation({"kind": "preparation", "scope": "move manifest", "preparation_class": "packaging_path_correction", "semantic_invariance_evidence_ref": "repo://diff-and-test", "semantic_invariance_evidence_sha256": "a" * 64}), "preparation")
+        with self.assertRaises(autonomy_policy.AutonomyPolicyError):
+            autonomy_policy.classify_continuation({"kind": "preparation", "scope": "rename security check", "preparation_class": "rename_or_move_only"})
+        with self.assertRaises(autonomy_policy.AutonomyPolicyError):
+            autonomy_policy.classify_continuation({"kind": "preparation", "scope": "repair", "candidate_id": "c1"})
         self.assertEqual(autonomy_policy.classify_continuation({"kind": "evidence_collection", "scope": "read logs"}), "evidence_collection")
         self.assertEqual(autonomy_policy.classify_continuation({"kind": "candidate_defect", "scope": "repair", "candidate_id": "c1", "failure_evidence": "repo://failure"}), "candidate_defect")
+
+    def test_new_preparation_consumer_requires_evidence_and_does_not_consume_defect_cycles(self):
+        with tempfile.TemporaryDirectory() as raw:
+            project = Path(raw) / "project"; state = project / ".chief-of-staff"; state.mkdir(parents=True)
+            state.joinpath("project.json").write_text(json.dumps({"autonomy_policy_enabled": True, "max_repair_cycles": 3}))
+            proof = {"schema": "CHIEF_PREPARATION_SEMANTIC_INVARIANCE_EVIDENCE_V1", "event_id": "prep-1", "kind": "preparation", "scope": "move package manifest", "preparation_class": "packaging_path_correction", "semantic_invariance": True}
+            proof_raw = (json.dumps(proof, sort_keys=True) + "\n").encode(); proof_path = project / "prep-proof.json"; proof_path.write_bytes(proof_raw)
+            valid = {"event_id": "prep-1", "kind": "preparation", "scope": "move package manifest", "preparation_class": "packaging_path_correction", "semantic_invariance_evidence_ref": "repo://prep-proof.json", "semantic_invariance_evidence_sha256": hashlib.sha256(proof_raw).hexdigest()}
+            receipt = retry_policy.consume_repair_cycle(project, "candidate-1", "review-1", "repair-1", continuation_event=valid)
+            self.assertEqual(receipt["cycles"], [])
+            self.assertEqual(receipt["continuation_journal"], [valid])
+            self.assertEqual(retry_policy.consume_repair_cycle(project, "candidate-1", "review-1", "repair-1", continuation_event=valid), receipt)
+            before = state.joinpath("repair-budget.json").read_bytes()
+            with self.assertRaisesRegex(retry_policy.RetryPolicyError, "normalized class"):
+                retry_policy.consume_repair_cycle(project, "candidate-2", "review-2", "repair-2", continuation_event={"event_id": "prep-2", "kind": "preparation", "scope": "rename only"})
+            self.assertEqual(state.joinpath("repair-budget.json").read_bytes(), before)
+            missing_proof = {**valid, "event_id": "prep-3", "semantic_invariance_evidence_ref": "repo://missing-proof.json", "semantic_invariance_evidence_sha256": "b" * 64}
+            with self.assertRaisesRegex(retry_policy.RetryPolicyError, "unavailable or invalid"):
+                retry_policy.consume_repair_cycle(project, "candidate-3", "review-3", "repair-3", continuation_event=missing_proof)
+            self.assertEqual(state.joinpath("repair-budget.json").read_bytes(), before)
+            legacy = {"event_id": "legacy-prep", "kind": "preparation", "scope": "old retained preparation"}
+            retained = json.loads(before); retained["continuation_journal"].append(legacy); state.joinpath("repair-budget.json").write_text(json.dumps(retained))
+            self.assertEqual(retry_policy.consume_repair_cycle(project, "candidate-4", "review-4", "repair-4", continuation_event=legacy), retained)
 
     def test_phase_transition_preserves_history_and_resets_only_active_cycles(self):
         state = {"schema": "CHIEF_REPAIR_BUDGET_V1", "cycles": [{"repair_id": "old"}], "diagnosis_requests": [], "extension": {"keep": True}}

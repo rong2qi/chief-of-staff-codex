@@ -16,6 +16,7 @@
   "operator_escalation_policy": "direct",
   "continuation_policy": "standard",
   "autonomy_policy_enabled": false,
+  "approved_decision_relay_enabled": false,
   "ordinary_failure_policy": "bounded_repair_cycle",
   "max_repair_cycles": 3,
   "continuation_escalation_policy": "existing_approval_boundaries",

@@ -13,6 +13,14 @@
     "direct_report_policy": "chain_of_command",
     "auditor_authority": "evidence_only",
     "partial_pause_policy": "affected_surface_only",
+    "approved_decision_relay": {
+      "enabled": false,
+      "mode": "todo_direct_exact_words_once",
+      "audit": "general_office_asynchronous_nonblocking",
+      "source": "registered_current_source_chief_only",
+      "visual_route": "creative_director_only",
+      "delivery_is_execution": false
+    },
     "continuation_policy": {
       "enabled": false,
       "default_action": "advance_best_safe_in_scope_path",

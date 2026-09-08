@@ -10,7 +10,7 @@ Use this policy only when a validated preference profile enables `governance_mod
 - **Departments / phase leads and execution roles**: work only within delegated contracts and report through the registered chain of command.
 - **Audit / read-only verifiers**: establish evidence and report PASS, FAIL, or evidence-insufficient. They have no administrative or product-decision authority.
 - **Creative council / Creative Director**: the sole operator-facing visual review hub when the visual gate is enabled.
-- **Secretariat / TODO**: read-only reminder service. It does not approve, relay decisions, or become a third decision authority.
+- **Secretariat / TODO**: read-only reminder service. With the explicitly enabled approved-decision-relay policy, it has only a one-time transport right: it may carry an already-approved nonvisual decision's stable ID and exact original words directly to the one registered current source Chief, then record a nonblocking General Office audit. It never approves, edits business approval state, executes, retries blindly, or becomes a third decision authority.
 
 ## Reserved powers and statutory exceptions
 
@@ -38,7 +38,7 @@ Visual decisions replace the final two hops with:
 
 `project Chief -> Creative Director -> chair`
 
-Routine child handoffs end with `CHIEF_REVIEW_READY`. A project Chief may approve or return them after evidence review. A new non-visual exception ends with `CHAIR_BRIEF_READY` to the general office; only the general office emits the first `USER_ACTION_REQUIRED`. After approval, the immutable decision ID and exact operator words relay once to the source Chief and the General Office records a mandatory asynchronous audit. The relay is nonblocking and is not execution, authority expansion, or Testing evidence. A visual packet remains awaiting the operator only in the Creative Director task.
+Routine child handoffs end with `CHIEF_REVIEW_READY`. A project Chief may approve or return them after evidence review. A new non-visual exception ends with `CHAIR_BRIEF_READY` to the general office; only the general office emits the first `USER_ACTION_REQUIRED`. When the explicit relay policy is enabled, TODO validates the immutable decision ID, exact operator words, and one registered current source Chief, then relays once directly to that Chief while General Office receives a mandatory asynchronous audit. Unknown, stale, duplicate, or delivery-failed records remain evidence and are not retried through another tool. The relay is nonblocking and is not execution, authority expansion, or Testing evidence. A visual packet remains awaiting the operator only in the Creative Director task.
 
 Emergency bypass is permitted only when evidence shows that the Chief is violating a safety boundary, concealing a protected-action risk, or is itself party to an unresolved write-ownership conflict. The bypass contains facts and evidence only; it grants no authority.
 

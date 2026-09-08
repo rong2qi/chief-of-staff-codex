@@ -30,7 +30,7 @@ Meeting permission: enabled | disabled; max participants: <n>
 ## Routing
 
 - Low risk, clear acceptance, one write surface: one task and one relevant check.
-- Medium risk or uncertain cross-file work: read-only scout → sole implementer → read-only verifier.
+- Medium risk or uncertain cross-file work: read-only scout → sole implementer → read-only verifier. Reuse the registered Testing Director for applicable independent quality work and the registered Creative Director for visual review; include registry identity, source owner, frozen handoff, and independence boundary. Do not create a duplicate Chief or treat a temporary subagent as a long-running hub. For a small check, keep the work in the source Chief unless independence is materially useful.
 - High risk, public interface, migration, security, data, or unresolved design: read-only arbiter → sole implementer → independent read-only review.
 - At most three active stages. At most two proposal/objection rounds. The initial independent verification does not consume a repair cycle; one concrete defect permits up to three focused repair-and-independent-recheck cycles. A stricter or already-consumed contract prevails.
 

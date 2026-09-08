@@ -7,6 +7,11 @@ from typing import Any, Mapping
 AUTONOMY_SCHEMA = "CHIEF_AUTONOMY_POLICY_V1"
 PHASE_SCHEMA = "CHIEF_REPAIR_PHASE_TRANSITION_V1"
 CONTINUATION_KINDS = {"preparation", "evidence_collection", "candidate_defect"}
+PREPARATION_CLASSES = {
+    "rename_or_move_only",
+    "packaging_path_correction",
+    "material_evidence_completion",
+}
 PROTECTED_ACTIONS = {"new_permission", "real_data", "credentials_or_secrets", "production", "release_or_deploy", "payment", "external_send", "security_rejection"}
 
 
@@ -49,10 +54,26 @@ def validate_approval_package(value: object) -> dict[str, Any]:
 
 
 def classify_continuation(value: object) -> str:
-    """Keep local preparation, evidence work, and a candidate defect distinct."""
+    """Keep non-defect preparation, evidence work, and a candidate defect apart.
+
+    Preparation is intentionally narrow: it may make a pure rename/move, fix a
+    packaging path, or retain missing evidence.  It cannot stand in for a
+    behavioural or security repair, and it never changes a prior stop or budget.
+    Older schema-v1 records without ``preparation_class`` remain readable as
+    preparation; newly recorded preparation must name one of these classes.
+    """
     if not isinstance(value, Mapping) or value.get("kind") not in CONTINUATION_KINDS:
         raise AutonomyPolicyError("continuation kind must be preparation, evidence_collection, or candidate_defect")
     _text(value.get("scope"), "continuation.scope")
+    if value["kind"] == "preparation":
+        preparation_class = value.get("preparation_class")
+        if preparation_class is not None and preparation_class not in PREPARATION_CLASSES:
+            raise AutonomyPolicyError("preparation_class must be a non-defect preparation class")
+        if preparation_class is not None:
+            _text(value.get("semantic_invariance_evidence_ref"), "continuation.semantic_invariance_evidence_ref")
+            _text(value.get("semantic_invariance_evidence_sha256"), "continuation.semantic_invariance_evidence_sha256")
+        if value.get("candidate_id") is not None or value.get("failure_evidence") is not None:
+            raise AutonomyPolicyError("preparation cannot carry a candidate defect or failure evidence")
     if value["kind"] == "candidate_defect":
         _text(value.get("candidate_id"), "continuation.candidate_id")
         legacy_failure = value.get("failure_evidence")

@@ -138,6 +138,9 @@ def render(source: Path, project_name: str, preferences: Optional[dict] = None) 
                     autonomy = continuation.get("autonomy_policy", {})
                     if autonomy.get("enabled") is True:
                         project["autonomy_policy_enabled"] = True
+                relay = governance.get("approved_decision_relay", {})
+                if isinstance(relay, dict) and relay.get("enabled") is True:
+                    project["approved_decision_relay_enabled"] = True
             visual = preferences["visual_selection_gate"]
             project["visual_selection_gate"] = (
                 "operator_after_clickable_preview" if visual["enabled"] else "disabled"
@@ -514,6 +517,8 @@ def validate_state(relative: Path, value: object, errors: list[str]) -> None:
             errors.append(f"autonomy_policy_enabled in {relative} must be a boolean")
         elif value.get("autonomy_policy_enabled") and continuation_policy != "advance_best_safe_in_scope_path":
             errors.append(f"autonomy_policy_enabled in {relative} requires continuation policy")
+        if value.get("approved_decision_relay_enabled") is not None and not isinstance(value.get("approved_decision_relay_enabled"), bool):
+            errors.append(f"approved_decision_relay_enabled in {relative} must be a boolean")
         if value.get("visual_selection_gate") not in {
             "disabled", "operator_after_clickable_preview"
         }:

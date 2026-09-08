@@ -29,11 +29,50 @@ def absolute_path(raw: str, label: str) -> Path:
 
 
 def build_profile(args: argparse.Namespace) -> dict:
+    if args.scope == "global":
+        data_root = absolute_path(
+            args.data_root or str(Path.home() / ".codex" / "chief-of-staff"),
+            "--data-root",
+        )
+        profile_path = absolute_path(
+            args.profile_out or str(data_root / "chief-preferences.json"),
+            "--profile-out",
+        )
+    else:
+        if not args.project_root:
+            raise PreferenceError("project scope requires --project-root")
+        project_root = absolute_path(args.project_root, "--project-root")
+        profile_path = absolute_path(
+            args.profile_out or str(project_root / ".chief-of-staff" / "preferences.json"),
+            "--profile-out",
+        )
+        data_root = absolute_path(
+            args.data_root or str(project_root / ".chief-of-staff"),
+            "--data-root",
+        )
+
+    existing = read_json(profile_path) if profile_path.exists() else None
+    if existing is not None:
+        require_valid(existing)
+
     if args.input:
         profile = read_json(absolute_path(args.input, "--input"))
         profile["preset"] = "custom"
+    elif existing is not None and any((
+        args.enable_autonomy_policy,
+        args.enable_chair_governance,
+        args.enable_approved_decision_relay,
+        args.enable_recommended_action_delegation,
+        args.disable_recommended_action_delegation,
+        args.enable_lifecycle_capability_discovery,
+    )):
+        profile = existing
     else:
         profile = preset_profile(args.preset)
+        if existing is not None:
+            for key, value in existing.items():
+                if key not in profile:
+                    profile[key] = value
     profile["scope"] = args.scope
 
     if args.salutation:
@@ -61,6 +100,7 @@ def build_profile(args: argparse.Namespace) -> dict:
 
     if args.enable_autonomy_policy:
         continuation = profile["governance_model"]["continuation_policy"]
+        continuation["enabled"] = True
         section = continuation.setdefault("autonomy_policy", {})
         section.update({
             "schema": "CHIEF_AUTONOMY_POLICY_V1", "enabled": True,
@@ -68,6 +108,24 @@ def build_profile(args: argparse.Namespace) -> dict:
             "ordinary_repair_cycles": 3,
             "protected_actions": ["new_permission", "real_data", "credentials_or_secrets", "production", "release_or_deploy", "payment", "external_send", "security_rejection"],
         })
+
+    if args.enable_chair_governance:
+        if not args.general_office_thread_id:
+            raise PreferenceError("--enable-chair-governance requires --general-office-thread-id")
+        governance = profile["governance_model"]
+        governance["enabled"] = True
+        governance["general_office_thread_id"] = args.general_office_thread_id
+
+    if args.enable_approved_decision_relay:
+        governance = profile["governance_model"]
+        governance["approved_decision_relay"] = {
+            "enabled": True,
+            "mode": "todo_direct_exact_words_once",
+            "audit": "general_office_asynchronous_nonblocking",
+            "source": "registered_current_source_chief_only",
+            "visual_route": "creative_director_only",
+            "delivery_is_execution": False,
+        }
 
     if args.enable_lifecycle_capability_discovery:
         profile["project_start_capability_discovery"] = (
@@ -80,28 +138,6 @@ def build_profile(args: argparse.Namespace) -> dict:
         profile["audio_playback"]["voice"] = args.voice
     if args.audio_rate is not None:
         profile["audio_playback"]["rate"] = args.audio_rate
-
-    if args.scope == "global":
-        data_root = absolute_path(
-            args.data_root or str(Path.home() / ".codex" / "chief-of-staff"),
-            "--data-root",
-        )
-        profile_path = absolute_path(
-            args.profile_out or str(data_root / "chief-preferences.json"),
-            "--profile-out",
-        )
-    else:
-        if not args.project_root:
-            raise PreferenceError("project scope requires --project-root")
-        project_root = absolute_path(args.project_root, "--project-root")
-        profile_path = absolute_path(
-            args.profile_out or str(project_root / ".chief-of-staff" / "preferences.json"),
-            "--profile-out",
-        )
-        data_root = absolute_path(
-            args.data_root or str(project_root / ".chief-of-staff"),
-            "--data-root",
-        )
 
     if args.data_root and (not data_root.exists() or not data_root.is_dir()):
         raise PreferenceError("custom --data-root must already exist and be a directory")
@@ -117,12 +153,6 @@ def build_profile(args: argparse.Namespace) -> dict:
     if profile["audio_playback"]["provider"] == "host_builtin" and args.voice:
         raise PreferenceError("--voice is only valid for auto or macos_say audio")
 
-    if profile_path.exists():
-        existing = read_json(profile_path)
-        require_valid(existing)
-        for key, value in existing.items():
-            if key not in profile:
-                profile[key] = value
     require_valid(profile)
     return profile, profile_path
 
@@ -149,6 +179,9 @@ def main() -> int:
         "--enable-autonomy-policy", action="store_true",
         help="Enable approved-package autonomy while retaining protected-action gates",
     )
+    parser.add_argument("--enable-chair-governance", action="store_true")
+    parser.add_argument("--general-office-thread-id")
+    parser.add_argument("--enable-approved-decision-relay", action="store_true")
     delegation.add_argument(
         "--disable-recommended-action-delegation", action="store_true"
     )

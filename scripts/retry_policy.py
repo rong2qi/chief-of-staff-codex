@@ -629,6 +629,29 @@ def consume_repair_cycle(
                     if prior != dict(continuation_event):
                         raise RetryPolicyError("preparation/evidence event ID conflicts with retained event")
                     return state
+                if kind == "preparation":
+                    required_event = {"event_id", "kind", "scope", "preparation_class", "semantic_invariance_evidence_ref", "semantic_invariance_evidence_sha256"}
+                    if set(continuation_event) != required_event or continuation_event.get("preparation_class") not in autonomy_policy.PREPARATION_CLASSES:
+                        raise RetryPolicyError("new preparation event requires one normalized class and retained semantic-invariance evidence")
+                    try:
+                        evidence = _read_retained_json(
+                            project_fd,
+                            continuation_event["semantic_invariance_evidence_ref"],
+                            continuation_event["semantic_invariance_evidence_sha256"],
+                            "preparation semantic-invariance evidence",
+                        )
+                    except (OSError, ValueError, TypeError) as exc:
+                        raise RetryPolicyError("preparation semantic-invariance evidence is unavailable or invalid") from exc
+                    if (
+                        set(evidence) != {"schema", "event_id", "kind", "scope", "preparation_class", "semantic_invariance"}
+                        or evidence.get("schema") != "CHIEF_PREPARATION_SEMANTIC_INVARIANCE_EVIDENCE_V1"
+                        or evidence.get("event_id") != event_id
+                        or evidence.get("kind") != "preparation"
+                        or evidence.get("scope") != continuation_event["scope"]
+                        or evidence.get("preparation_class") != continuation_event["preparation_class"]
+                        or evidence.get("semantic_invariance") is not True
+                    ):
+                        raise RetryPolicyError("preparation semantic-invariance evidence is unbound or invalid")
                 journal.append(dict(continuation_event))
                 _write_state(state_fd, state)
                 return state
