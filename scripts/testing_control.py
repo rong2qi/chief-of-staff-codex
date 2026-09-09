@@ -217,9 +217,12 @@ def consume_delivery(state, result):
     else:
         status = result.get("status")
         items = result.get("items")
+        valid_verdict = (status in {"TESTING_GATE_PASS", "TESTING_GATE_FAIL"}
+                         and isinstance(items, list) and bool(items))
         infra = (status in {"timeout", "transport_failure", "turn_error", "no_report"}
-                 or items == [] or (status is None and not result.get("report")))
-        if status in {"TESTING_GATE_PASS", "TESTING_GATE_FAIL"} and items != []:
+                 or items == [] or (status is None and not result.get("report"))
+                 or (status in {"TESTING_GATE_PASS", "TESTING_GATE_FAIL"} and not valid_verdict))
+        if valid_verdict:
             return {"schema": SCHEMA, "status": status, "attempts": attempts,
                     "product_failed": status == "TESTING_GATE_FAIL", "retry": False, "wait": False}
     if not infra:

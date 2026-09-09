@@ -110,6 +110,20 @@ class TestingControlTests(unittest.TestCase):
             {"attempts": 2}, {"status": "TESTING_GATE_PASS", "items": []})
         self.assertEqual(contradictory["status"], "TESTING_INFRA_ERROR")
 
+    def test_verdict_requires_nonempty_delivery_items(self):
+        for result in ({"status": "TESTING_GATE_PASS"},
+                       {"status": "TESTING_GATE_PASS", "items": None},
+                       {"status": "TESTING_GATE_FAIL", "items": None}):
+            classified = policy.consume_delivery({"attempts": 2}, result)
+            self.assertEqual(classified["status"], "TESTING_INFRA_ERROR")
+            self.assertFalse(classified["product_failed"])
+        passed = policy.consume_delivery(
+            {"attempts": 1}, {"status": "TESTING_GATE_PASS", "items": [{"report": "bound"}]})
+        failed = policy.consume_delivery(
+            {"attempts": 1}, {"status": "TESTING_GATE_FAIL", "items": [{"report": "bound"}]})
+        self.assertEqual(passed["status"], "TESTING_GATE_PASS")
+        self.assertTrue(failed["product_failed"])
+
     def test_delivery_retry_budget_is_exactly_one_automatic_retry(self):
         first = policy.consume_delivery({"attempts": 1}, {"status": "timeout"})
         self.assertEqual(first, {"schema": policy.SCHEMA, "status": "RETRY_TESTING_DELIVERY",
