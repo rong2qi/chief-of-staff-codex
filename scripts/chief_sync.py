@@ -65,11 +65,14 @@ def _dirty_paths(target):
 
 def _source_info(source):
     version = json.loads((source / 'chief-version.json').read_text())
-    if version != {'version': '2.0.0', 'schema_version': 2, 'work_execution_version': 'WORK_EXECUTION_V1'}:
+    if (not isinstance(version, dict) or version.get('version') not in {'2.0.0', '2.0.1'}
+            or version != {'version': version.get('version'), 'schema_version': 2,
+                           'work_execution_version': 'WORK_EXECUTION_V1'}):
         raise SyncConflict('unsupported or invalid chief-version.json')
     commit = _git(source, 'rev-parse', 'HEAD')
-    if _git(source, 'rev-parse', 'v2.0.0^{commit}') != commit:
-        raise SyncConflict('source HEAD must be the fixed v2.0.0 release')
+    tag = 'v' + version['version']
+    if _git(source, 'rev-parse', f'refs/tags/{tag}^{{commit}}') != commit:
+        raise SyncConflict(f'source HEAD must be the fixed {tag} release')
     if _dirty_paths(source):
         raise SyncConflict('source checkout must be clean')
     return version['version'], commit

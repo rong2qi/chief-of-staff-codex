@@ -1,26 +1,40 @@
 # Chief of Staff for Codex / Codex 幕僚长
 
+## v2.0.1: Evidence-aware Testing
+
+冻结且通过 Testing 的证据可以复用。Chief 按 **完整 commit SHA + 实际 Git diff + dependency impact**
+生成 delta gate：无关变更继承 `INHERITED_PASS`，相关输入或依赖变化进入 `RETEST_REQUIRED`，
+组合新增风险只做 `INTEGRATION_ONLY` smoke。送测载荷只包含后两类，不能把已测 M1/M2 整包重复送检。
+无法证明有效时默认重测；没有原生 `TESTING_GATE_PASS` 不能继承。阶段切换本身不是全量重测理由。
+
+The additive evidence format retains original gate authority, source/current
+candidate SHAs, scope, Git input snapshots, dependency fingerprints and hashes.
+Handoff revalidates the original chain and exact delta returns. Project schema
+stays **2**. See [the runnable workflow and trust boundary](references/testing-evidence.md).
+
+Chief regression command (Python 3.11+): `python3 -m unittest discover -s tests`.
+
 新项目默认使用 `WORK_EXECUTION_V1`；旧项目必须由原 Chief 明确重读并采用一次。当前 Chief 可以直接高效执行，`DIRECT` 是执行方式，不是岗位。按当前工作决定发现深度，按风险与证据决定自检或独立复核；详见 [通用工作执行规则](references/work-execution.md)。下文的项目级产品门适用于旧项目；V1 新产品仍保留完整产品经理和四路发现要求；安全、授权、目标和适用的未决产品要求始终保留。
 
 New projects default to `WORK_EXECUTION_V1`; an existing Chief explicitly rereads and adopts it in place. The Chief may execute directly when efficient; `DIRECT` is a mode, not a role. Current work determines discovery depth, while risk and evidence determine review independence. See [work execution](references/work-execution.md). Legacy whole-project gates apply without V1 adoption; V1 new-product work still requires the full Product Manager and four-lane workflow. Safety, authorization, goal boundaries, and applicable unresolved product requirements remain binding.
 
-## Chief 2.0.0 installation and explicit fleet sync
+## Chief 2.0.1 installation and explicit fleet sync
 
-`chief-version.json` declares Chief `2.0.0`, contract schema `2`, and `WORK_EXECUTION_V1`. New and explicitly synced projects have a thin managed `AGENTS.md` entry generated from [chief-project-entry.md](assets/chief-project-entry.md), plus `.chief-of-staff/chief-lock.json` recording the exact source commit and managed-file hashes. Generic logic remains in the pinned Chief source. The old full project template is retained only for compatibility recognition/tests. Put project-specific commands, business constraints, and stricter limits in user-owned `.chief-of-staff/project-overrides.md`; sync does not overwrite it. Overrides cannot expand permissions or waive validation.
+`chief-version.json` declares Chief `2.0.1`, contract schema `2`, and `WORK_EXECUTION_V1`. New and explicitly synced projects have a thin managed `AGENTS.md` entry generated from [chief-project-entry.md](assets/chief-project-entry.md), plus `.chief-of-staff/chief-lock.json` recording the exact source commit and managed-file hashes. Generic logic remains in the pinned Chief source. The old full project template is retained only for compatibility recognition/tests. Put project-specific commands, business constraints, and stricter limits in user-owned `.chief-of-staff/project-overrides.md`; sync does not overwrite it. Overrides cannot expand permissions or waive validation.
 
 新版采用单一真源：固定 Chief 版本和提交，项目只留轻入口及受控的专属覆盖。旧 Chief 在原任务中明确重读和采用即可，不必重启或新建任务。新产品仍须完整产品经理与四路发现流程；明确的既有操作、修复及受影响变更按当前工作处理。版本锁只证明来源和检测冲突，不是授权。
 
-Use a dedicated, clean source checkout at stable tag `v2.0.0`. This release's sync command verifies that source HEAD is exactly the tag commit and rejects local source changes. It does not follow floating `main`. Replace `/path/to/chief-source` consistently with your chosen installed Skill/source directory:
+Use a dedicated, clean source checkout at stable tag `v2.0.1`. This release's sync command verifies that source HEAD is exactly the tag commit and rejects local source changes. It does not follow floating `main`. Replace `/path/to/chief-source` consistently with your chosen installed Skill/source directory:
 
 ```bash
-git clone --branch v2.0.0 --single-branch https://github.com/rong2qi/chief-of-staff-codex.git /path/to/chief-source
+git clone --branch v2.0.1 --single-branch https://github.com/rong2qi/chief-of-staff-codex.git /path/to/chief-source
 ```
 
 For an existing clean source checkout, update the fixed reference without discarding local changes:
 
 ```bash
-git -C /path/to/chief-source fetch origin tag v2.0.0
-git -C /path/to/chief-source switch --detach v2.0.0
+git -C /path/to/chief-source fetch origin tag v2.0.1
+git -C /path/to/chief-source switch --detach v2.0.1
 ```
 
 If Git reports local changes or a tag conflict, resolve them explicitly; do not force/reset/stash as part of sync. `--source` selects the fixed implementation and assets even when the invoking script lives elsewhere.
@@ -55,9 +69,9 @@ Each result is `success`, `up_to_date`, `conflict`, `failed`, or `not_found`. A 
       "name": "Example app",
       "target": "/projects/example-app",
       "status": "success",
-      "source_version": "2.0.0",
+      "source_version": "2.0.1",
       "source_commit": "<exact source SHA>",
-      "branch": "chief/adopt-2.0.0",
+      "branch": "chief/adopt-2.0.1",
       "execution_path": "/projects/example-app",
       "commit": "<exact migration SHA>",
       "validation_scope": "Chief schema and migration checks only; no business build/test"
@@ -67,7 +81,7 @@ Each result is `success`, `up_to_date`, `conflict`, `failed`, or `not_found`. A 
 }
 ```
 
-A clean project switches to `chief/adopt-2.0.0` and receives a local migration commit. A project with unrelated business changes gets a separate Git worktree on that branch, leaving its original checkout and changes intact. Uncommitted Chief-managed changes require conflict review. A dirty project's successful result means its migration exists at `execution_path`; it does not mean the original branch adopted it. Review the migration diff and explicitly integrate its commit into the intended branch at a safe boundary. Sync never pushes, merges into the user's branch, or silently resolves their changes. Matching completed migrations are reused; a branch collision or drift is reported, not overwritten.
+A clean project switches to `chief/adopt-2.0.1` and receives a local migration commit. A project with unrelated business changes gets a separate Git worktree on that branch, leaving its original checkout and changes intact. Uncommitted Chief-managed changes require conflict review. A dirty project's successful result means its migration exists at `execution_path`; it does not mean the original branch adopted it. Review the migration diff and explicitly integrate its commit into the intended branch at a safe boundary. Sync never pushes, merges into the user's branch, or silently resolves their changes. Matching completed migrations are reused; a branch collision or drift is reported, not overwritten.
 
 Managed instruction/hash conflicts, unrecognized legacy instructions, running/paused work, invalid retained state, source-pin mismatches, and independently frozen adapter gates need explicit resolution. Preserve business files, custom instructions, approvals, work history, failures, ownership, and stricter limits. Move only deliberately reviewed project-specific rules into the override file; do not copy generic rules there to bypass the pin. A transaction failure retains/reports recovery information and does not authorize continuing from a partially verified state.
 
@@ -149,7 +163,7 @@ Chief of Staff 是一个强调长期上下文、岗位分工、独立复核和�
 
 ### 安装
 
-使用上方[固定版本安装与同步流程](#chief-200-installation-and-explicit-fleet-sync)。将唯一、干净的 `v2.0.0` checkout 直接放在个人 Skills 目录，或将 Skill 入口链接到选定 checkout；不要复制出另一个独立演进的 Chief 真源。先核对并保留已有安装、链接和本地更改。可选 companion Skill 入口可链接到同一固定 checkout 内的对应目录。
+使用上方[固定版本安装与同步流程](#chief-201-installation-and-explicit-fleet-sync)。将唯一、干净的 `v2.0.1` checkout 直接放在个人 Skills 目录，或将 Skill 入口链接到选定 checkout；不要复制出另一个独立演进的 Chief 真源。先核对并保留已有安装、链接和本地更改。可选 companion Skill 入口可链接到同一固定 checkout 内的对应目录。
 
 原 Chief 明确重读并采用固定版本后继续当前任务；同步本身不要求新建任务或重启。主机尚未识别 Skill 时，按主机加载机制刷新；这与项目采用是两件事。
 
@@ -459,7 +473,7 @@ Chief of Staff is an orchestration layer built around durable context, role sepa
 
 ### Install
 
-Use the [fixed-version installation and sync workflow above](#chief-200-installation-and-explicit-fleet-sync). Keep one clean `v2.0.0` checkout directly in the personal Skills directory, or point its Skill entry to that chosen checkout with a symlink. Do not create independently evolving Chief copies. Inspect and preserve any existing installation, link, and local changes first. Optional companion Skill entries can reference their corresponding directories in the same pinned checkout.
+Use the [fixed-version installation and sync workflow above](#chief-201-installation-and-explicit-fleet-sync). Keep one clean `v2.0.1` checkout directly in the personal Skills directory, or point its Skill entry to that chosen checkout with a symlink. Do not create independently evolving Chief copies. Inspect and preserve any existing installation, link, and local changes first. Optional companion Skill entries can reference their corresponding directories in the same pinned checkout.
 
 After explicitly rereading and adopting the pinned version, the existing Chief continues in its current task; sync does not require a new task or restart. If the host has not discovered a Skill, refresh it through the host's loading mechanism; that is separate from project adoption.
 

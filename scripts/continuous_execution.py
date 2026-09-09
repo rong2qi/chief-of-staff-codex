@@ -152,7 +152,11 @@ def validate_native_testing_return(observed: object, *, package: Mapping[str, An
         or not isinstance(receipt.get("native_event_id"), str) or not receipt["native_event_id"]):
         raise ContinuousExecutionError("native Testing receipt lacks exact coordinator identity")
     testing_reviewer = _testing_reviewer_task_id(submitting_project=submitting_project, native_observation_root=native_observation_root)
-    direct = policy["risk"] == "high" or any(policy[key] for key in ("sensitive", "production", "global_upgrade", "disputed"))
+    # A genuine coordinator-observed Chief gate also covers lower-risk work.
+    # Delegated PASS remains a separate route and never becomes a Chief gate.
+    direct = (policy["risk"] == "high"
+              or any(policy[key] for key in ("sensitive", "production", "global_upgrade", "disputed"))
+              or receipt.get("schema") == "CHIEF_TESTING_GATE_RECEIPT_V1")
     if direct:
         if receipt.get("schema") != "CHIEF_TESTING_GATE_RECEIPT_V1" or receipt.get("issuer_task_id") != testing_reviewer or receipt.get("status") != "TESTING_GATE_PASS":
             raise ContinuousExecutionError("high-risk Testing return requires the unique Testing Chief direct PASS")

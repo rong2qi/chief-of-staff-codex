@@ -68,6 +68,28 @@ class ChiefSyncTests(unittest.TestCase):
         self.assertEqual(reverted['status'], 'success', reverted)
         self.assertEqual((self.target / 'AGENTS.md').read_text(), 'old chief')
 
+    def test_patch_release_requires_exact_matching_tag_and_syncs_fleet(self):
+        version = self.source / 'chief-version.json'
+        value = json.loads(version.read_text())
+        value['version'] = '2.0.1'
+        version.write_text(json.dumps(value))
+        git(self.source, 'add', '.')
+        git(self.source, 'commit', '-qm', 'patch release')
+        refused = self.api.sync_repository(self.target, source=self.source)
+        self.assertEqual(refused['status'], 'conflict')
+        git(self.source, 'tag', 'v2.0.1')
+        manifest = self.base / 'projects.json'
+        manifest.write_text(json.dumps({'version': 1, 'projects': [
+            {'name': 'fixture', 'path': 'target', 'pinned': True}]}))
+        result = self.api.fleet_sync(manifest, source=self.source, pinned=True)['results'][0]
+        self.assertEqual(result['status'], 'success', result)
+        self.assertEqual(result['source_version'], '2.0.1')
+        self.assertEqual(result['branch'], 'chief/adopt-2.0.1')
+        (self.source / 'unreleased').write_text('new')
+        git(self.source, 'add', '.')
+        git(self.source, 'commit', '-qm', 'after tag')
+        self.assertEqual(self.api.sync_repository(self.target, source=self.source)['status'], 'conflict')
+
     def test_dirty_business_uses_worktree_preserving_original(self):
         original_branch = git(self.target, 'branch', '--show-current')
         (self.target / 'business.txt').write_text('uncommitted work')
@@ -98,14 +120,24 @@ class ChiefSyncTests(unittest.TestCase):
         self.assertFalse((self.target / '.chief-of-staff/chief-lock.json').exists())
 
     def test_real_source_sync_schema_and_repeat(self):
+        self.real_source_sync_schema_and_repeat('2.0.0')
+
+    def test_real_patch_release_fleet_migration_preserves_user_state(self):
+        self.real_source_sync_schema_and_repeat('2.0.1')
+
+    def real_source_sync_schema_and_repeat(self, version):
         import shutil
         self.sync_patch.stop()
+        version_path = self.source / 'chief-version.json'
+        value = json.loads(version_path.read_text())
+        value['version'] = version
+        version_path.write_text(json.dumps(value))
         for name in ('scripts', 'assets', 'references'):
             shutil.copytree(SCRIPT.parents[1] / name, self.source / name,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         git(self.source, 'add', '.')
         git(self.source, 'commit', '-qm', 'actual source fixtures')
-        git(self.source, 'tag', '-f', 'v2.0.0')
+        git(self.source, 'tag', '-f', 'v' + version)
         target = self.base / 'real-project'
         code = "import sys;sys.path.insert(0,sys.argv[1]);import init_project;from pathlib import Path;sys.exit(init_project.initialize(Path(sys.argv[2]), 'Example'))"
         initialized = subprocess.run([sys.executable, '-B', '-c', code, str(self.source / 'scripts'), str(target)],
@@ -182,6 +214,7 @@ for name, data in agent_os.render_contract_files('Example', codex_instructions=l
             execution = Path(item['execution_path'])
             lock = json.loads((execution / '.chief-of-staff/chief-lock.json').read_text())
             self.assertEqual(lock['source_commit'], git(self.source, 'rev-parse', 'HEAD'))
+            self.assertEqual(lock['version'], version)
             self.assertNotEqual((execution / 'AGENTS.md').read_bytes(), before_clean['AGENTS.md'])
         again = self.api.fleet_sync(manifest, source=self.source, pinned=True)
         self.assertEqual([r['status'] for r in again['results']], ['up_to_date', 'up_to_date', 'conflict'], again)

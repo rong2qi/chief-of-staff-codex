@@ -1,8 +1,30 @@
 # Work execution V1
 
+## Evidence-aware Testing and the anti-repetition rule
+
+Chief 2.0.1 adds [evidence inheritance and the delta gate](testing-evidence.md).
+Before asking Testing to review an integration candidate, use the exact source
+and current Git SHAs, actual diff and reviewed dependency impact to reuse
+unaffected frozen evidence. Stage changes alone never justify repeating all
+checks. Dispatch only `RETEST_REQUIRED + INTEGRATION_ONLY`; use minimum
+integration-only smoke for new cross-module risks. Missing or unverifiable
+evidence defaults to retest. An original native `TESTING_GATE_PASS` is required
+for every `INHERITED_PASS`; self-review and transport acknowledgments cannot
+stand in for it.
+
+At handoff/acceptance run `testing_evidence.py accept` against the retained delta
+and exact pending returns. Retain its `DELTA_GATE_READY` audit alongside the
+work's existing acceptance evidence and bind the current work input digest as
+before. The delta result does not relax admission, completion, native Testing,
+release permission, or independently gated non-Git artifact contracts. Local
+`passed` check records are integrity evidence and cannot be imported as a native
+Testing gate. Historical source evidence is immutable; derived evidence gets a
+new digest and preserves provenance. Schema remains 2; old evidence without a
+verifiable native subject is retained but cannot be inherited automatically.
+
 ## Applicability and adoption
 
-Chief `2.0.0` declares schema `2` in `chief-version.json`, alongside `WORK_EXECUTION_V1`. New and synced projects use a thin managed entry and `.chief-of-staff/chief-lock.json` to pin the exact source commit. See the [installation and fleet-sync instructions](../README.md#chief-200-installation-and-explicit-fleet-sync). Generic rules live in this source, while `.chief-of-staff/project-overrides.md` holds user-owned project commands, business constraints, and stricter limits. Overrides cannot expand permissions, remove required validation, or erase history.
+Chief `2.0.1` declares schema `2` in `chief-version.json`, alongside `WORK_EXECUTION_V1`. New and synced projects use a thin managed entry and `.chief-of-staff/chief-lock.json` to pin the exact source commit. See the [installation and fleet-sync instructions](../README.md#chief-201-installation-and-explicit-fleet-sync). Generic rules live in this source, while `.chief-of-staff/project-overrides.md` holds user-owned project commands, business constraints, and stricter limits. Overrides cannot expand permissions, remove required validation, or erase history.
 
 New projects default to `project.json.work_execution_version: WORK_EXECUTION_V1`. Existing projects retain their current behavior until their Chief explicitly rereads this contract and adopts it with a retained decision reference. Reading updated instructions alone, reinstalling the Skill, or running an ordinary initializer check does not adopt an old project. Adoption is in place: keep the current Chief, task identity, history, goal, authorization, approvals, ownership, and failure evidence. No restart or new task is required after explicit reread and successful adoption. This is not context migration.
 

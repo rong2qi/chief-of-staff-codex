@@ -7,6 +7,20 @@ metadata:
 
 # Chief of Staff
 
+## Evidence-aware Testing (Chief 2.0.1)
+
+Already-passed frozen evidence must be reused when its scope, code, resources,
+contracts, inputs and reviewed dependency closure remain valid. Phase changes
+alone cannot trigger full retesting. Use [the delta gate contract](references/testing-evidence.md)
+and `scripts/testing_evidence.py` at Git candidate freeze, integration and
+handoff acceptance: compute actual Git diff and dependency impact, classify
+`INHERITED_PASS`, `RETEST_REQUIRED`, and `INTEGRATION_ONLY`, and dispatch only the
+last two classes to Testing. Unknown validity defaults to retest. Original
+native `TESTING_GATE_PASS` authority is mandatory; hashes, transport ACKs and
+self-checks cannot manufacture it. Keep source/current candidate SHAs, gate
+hashes and impact reasons for audit. `accept` must freshly validate provenance
+and delta returns; `DELTA_GATE_READY` is not a new Testing PASS or permission.
+
 ## 新增执行政策 / New execution policy
 
 - 默认 `effective_throughput`：最多两个独立阶段并行，每个检查点必须产生可验证证据；连续两个检查点无证据即停止并自查。
