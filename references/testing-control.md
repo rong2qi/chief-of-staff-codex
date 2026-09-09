@@ -82,8 +82,13 @@ candidate freeze, local commit preparation and independent modules. A whole
 project waits only when every remaining action truly depends on the same
 synchronous L3/explicit gate.
 
-One Testing delivery gets one automatic retry after an empty item list, missing
-report, timeout, transport failure, or abnormal turn end. A second infrastructure
+One Testing delivery gets one automatic retry after an empty/invalid item list,
+missing candidate-bound gate receipt, missing report, timeout, transport failure,
+or abnormal turn end. An outer status or nonempty transport item is not a verdict.
+A valid verdict item is a structured `CHIEF_TESTING_GATE_RECEIPT_V1` whose status
+and candidate digest match the expected delivery and whose issuer is identified;
+a PASS also declares no unresolved findings. Native authority validation remains
+separate and mandatory. A second infrastructure
 failure becomes `TESTING_INFRA_ERROR`; stop delivery retries. It is not
 `TESTING_GATE_FAIL` and does not roll back a completed L0/L1 deterministic task.
 Only a real candidate finding produces Gate Fail.

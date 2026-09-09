@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import sys
 
 
@@ -217,8 +218,19 @@ def consume_delivery(state, result):
     else:
         status = result.get("status")
         items = result.get("items")
+        expected = state.get("expected_candidate_sha256")
+        valid_expected = isinstance(expected, str) and re.fullmatch(r"[a-f0-9]{64}", expected)
+        valid_items = [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
         valid_verdict = (status in {"TESTING_GATE_PASS", "TESTING_GATE_FAIL"}
-                         and isinstance(items, list) and bool(items))
+                         and valid_expected and any(
+                             item.get("schema") == "CHIEF_TESTING_GATE_RECEIPT_V1"
+                             and item.get("status") == status
+                             and item.get("candidate_sha256") == expected
+                             and isinstance(item.get("issuer_task_id"), str)
+                             and bool(item["issuer_task_id"].strip())
+                             and (status != "TESTING_GATE_PASS"
+                                  or item.get("unresolved_findings") is False)
+                             for item in valid_items))
         infra = (status in {"timeout", "transport_failure", "turn_error", "no_report"}
                  or items == [] or (status is None and not result.get("report"))
                  or (status in {"TESTING_GATE_PASS", "TESTING_GATE_FAIL"} and not valid_verdict))

@@ -13,6 +13,7 @@ from scripts import testing_control as policy
 FIXTURE = Path(__file__).parent / "fixtures/testing-control-v2.0.2.json"
 SHA = "a" * 40
 OLD_SHA = "b" * 40
+CANDIDATE_DIGEST = "c" * 64
 
 
 def delta(*rows, tests=None):
@@ -118,11 +119,36 @@ class TestingControlTests(unittest.TestCase):
             self.assertEqual(classified["status"], "TESTING_INFRA_ERROR")
             self.assertFalse(classified["product_failed"])
         passed = policy.consume_delivery(
-            {"attempts": 1}, {"status": "TESTING_GATE_PASS", "items": [{"report": "bound"}]})
+            {"attempts": 1, "expected_candidate_sha256": CANDIDATE_DIGEST},
+            {"status": "TESTING_GATE_PASS", "items": [{
+                "schema": "CHIEF_TESTING_GATE_RECEIPT_V1", "status": "TESTING_GATE_PASS",
+                "candidate_sha256": CANDIDATE_DIGEST, "issuer_task_id": "testing-chief",
+                "unresolved_findings": False}]})
         failed = policy.consume_delivery(
-            {"attempts": 1}, {"status": "TESTING_GATE_FAIL", "items": [{"report": "bound"}]})
+            {"attempts": 1, "expected_candidate_sha256": CANDIDATE_DIGEST},
+            {"status": "TESTING_GATE_FAIL", "items": [{
+                "schema": "CHIEF_TESTING_GATE_RECEIPT_V1", "status": "TESTING_GATE_FAIL",
+                "candidate_sha256": CANDIDATE_DIGEST, "issuer_task_id": "testing-chief"}]})
         self.assertEqual(passed["status"], "TESTING_GATE_PASS")
         self.assertTrue(failed["product_failed"])
+
+    def test_nonempty_invalid_or_wrong_candidate_items_are_infra_not_verdicts(self):
+        invalid_items = [
+            [{}],
+            [None],
+            [{"type": "TESTING_INTAKE_ACK"}],
+            [{"schema": "CHIEF_TESTING_GATE_RECEIPT_V1", "status": "TESTING_GATE_PASS",
+              "candidate_sha256": "d" * 64, "issuer_task_id": "testing-chief",
+              "unresolved_findings": False}],
+            [{"schema": "CHIEF_TESTING_GATE_RECEIPT_V1", "status": "TESTING_GATE_PASS",
+              "candidate_sha256": CANDIDATE_DIGEST, "issuer_task_id": "testing-chief",
+              "unresolved_findings": True}],
+        ]
+        state = {"attempts": 2, "expected_candidate_sha256": CANDIDATE_DIGEST}
+        for items in invalid_items:
+            result = policy.consume_delivery(state, {"status": "TESTING_GATE_PASS", "items": items})
+            self.assertEqual(result["status"], "TESTING_INFRA_ERROR")
+            self.assertFalse(result["product_failed"])
 
     def test_delivery_retry_budget_is_exactly_one_automatic_retry(self):
         first = policy.consume_delivery({"attempts": 1}, {"status": "timeout"})
