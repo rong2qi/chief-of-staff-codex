@@ -19,6 +19,7 @@ import agent_os
 from delivery_ledger import Ledger, LedgerError
 from legacy_agents_gate import LegacyGateError, validate_candidate_binding, validate_gate
 import continuous_execution
+import work_execution
 
 try:
     import tomllib
@@ -1553,6 +1554,25 @@ def validate(target: Path, *, legacy_trust_root: str | None = None) -> list[str]
                 errors.append(f"continuous execution records: {exc}")
             except Exception as exc:
                 errors.append(f"continuous execution records: {exc}")
+            try:
+                work_errors = work_execution.validate_records(target, project, plan, registry, discovery)
+            except (ValueError, TypeError, KeyError, AttributeError, OSError) as exc:
+                work_errors = ["invalid work execution records: " + str(exc)]
+            errors.extend(work_errors)
+            work_v1 = work_execution.enabled(project)
+            works = plan.get("work_items", []) if work_v1 else []
+            works = works if isinstance(works, list) and not work_errors else []
+            governed_tasks = {
+                w.get("executor", {}).get("id") for w in works
+                if isinstance(w, dict) and w.get("status") in work_execution.ACTIVE | {"completed"} and w.get("executor", {}).get("kind") == "task"
+            }
+            governed_phases = {
+                w.get("phase_id") for w in works if isinstance(w, dict) and w.get("status") in work_execution.ACTIVE | {"completed"}
+            }
+            # A phase exemption never covers a sibling task without its own work record.
+            for task in registry.get("tasks", []):
+                if isinstance(task, dict) and task.get("task_id") not in governed_tasks:
+                    governed_phases.discard(task.get("phase_id"))
             tasks = registry.get("tasks") if isinstance(registry, dict) else None
             phases = plan.get("phases") if isinstance(plan, dict) else None
             task_list = tasks if isinstance(tasks, list) else []
@@ -1560,12 +1580,14 @@ def validate(target: Path, *, legacy_trust_root: str | None = None) -> list[str]
             if isinstance(plan, dict) and plan.get("project_status") == "active":
                 current_phase_id = plan.get("current_phase_id")
                 active_statuses = {"queued", "running", "needs_attention"}
-                if not isinstance(tasks, list) or not any(
+                direct_active = any(isinstance(w, dict) and w.get("phase_id") == current_phase_id
+                                    and w.get("status") in active_statuses for w in works)
+                if not direct_active and (not isinstance(tasks, list) or not any(
                     isinstance(task, dict)
                     and task.get("phase_id") == current_phase_id
                     and task.get("status") in active_statuses
                     for task in tasks
-                ):
+                )):
                     errors.append(
                         "active project requires a queued, running, or needs_attention "
                         "task in the current phase"
@@ -1662,10 +1684,12 @@ def validate(target: Path, *, legacy_trust_root: str | None = None) -> list[str]
                 nonlegacy_tasks = [
                     task for task in task_list
                     if isinstance(task, dict) and task.get("work_class") != "legacy_existing"
+                    and task.get("task_id") not in governed_tasks
                 ]
                 nonlegacy_phases = [
                     phase for phase in phase_list
                     if isinstance(phase, dict) and phase.get("phase_class") != "legacy_existing"
+                    and phase.get("phase_id") not in governed_phases
                 ]
                 if goal_status == "unconfirmed":
                     if classification_status == "classified":
@@ -1674,7 +1698,9 @@ def validate(target: Path, *, legacy_trust_root: str | None = None) -> list[str]
                         errors.append("unconfirmed goal permits only goal_discovery tasks")
                     if any(phase.get("phase_class") != "goal_discovery" for phase in nonlegacy_phases):
                         errors.append("unconfirmed goal permits only goal_discovery phases")
-                elif goal_status == "confirmed" and classification_status == "pending":
+                elif goal_status == "confirmed" and classification_status == "pending" and not (
+                    work_v1 and works and not nonlegacy_tasks and not nonlegacy_phases
+                ):
                     errors.append("confirmed goal requires project classification")
                 elif goal_status == "confirmed" and classification_status == "legacy_unclassified":
                     if nonlegacy_tasks or nonlegacy_phases:
@@ -1904,7 +1930,18 @@ def compatible_chief_agents(text: str, expected: str) -> bool:
     known_one_cycle_payload_sha256 = "486737cd990a2c1389dc14a92df7cf291c2a8c31e227e4f80f3380044ba8d8d5"
     if hashlib.sha256(preserved.encode("utf-8")).hexdigest() == known_one_cycle_payload_sha256:
         return True
+    entry = (SKILL_ROOT / "assets/chief-project-entry.md").read_text()
+    if preserved == entry:
+        return True
     variants = {expected}
+    prior = (SKILL_ROOT / "assets/compat/pre-work-execution-AGENTS.md").read_text()
+    # Project name substitution is the only change in the previous template.
+    prefix = "This project is coordinated through one primary Codex task named `Chief of "
+    for line in expected.splitlines():
+        if line.startswith(prefix) and line.endswith("`."):
+            name = line[len(prefix):-2]
+            variants.add(prior.replace("{{PROJECT_NAME}}", name))
+            break
     variants.add(
         "\n".join(
             line
@@ -2113,6 +2150,16 @@ def initialize(
     for source, relative in files:
         destination = target / relative
         expected = render(source, project_name, preferences)
+        if existing_project is None and relative.name == "project.json":
+            fresh_project = json.loads(expected)
+            fresh_project["work_execution_version"] = work_execution.VERSION
+            _, identity, source_commit = work_execution._source_identity()
+            fresh_project.update(chief_version=identity["version"], chief_schema_version=identity["schema_version"], chief_source_commit=source_commit)
+            expected = encoded_json(fresh_project)
+        if existing_project is None and relative.name == "project-plan.json":
+            fresh_plan = json.loads(expected)
+            fresh_plan.update(work_items=[], work_history=[])
+            expected = encoded_json(fresh_plan)
         if relative == Path("AGENTS.md") and agent_os_required:
             continue
         if (
@@ -2389,7 +2436,7 @@ def initialize(
 
     if existing_project is None:
         chief_agents = render(TEMPLATE_ROOT / "AGENTS.md", project_name, preferences)
-        for relative, expected in fresh_agent_os_files(project_name, chief_agents).items():
+        for relative, expected in fresh_agent_os_files(project_name, (SKILL_ROOT / "assets/chief-project-entry.md").read_bytes()).items():
             destination = target / relative
             cursor = target
             unsafe_parent = False
@@ -2403,23 +2450,9 @@ def initialize(
                 continue
             planned.append((destination, expected))
     elif agent_os_required:
-        agents_path = target / "AGENTS.md"
-        expected_chief_agents = render(
-            TEMPLATE_ROOT / "AGENTS.md", project_name, preferences
-        ).decode("utf-8")
-        try:
-            agents_text = agents_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            agents_text = ""
-        if compatible_chief_agents(agents_text, expected_chief_agents):
-            for relative, expected in fresh_agent_os_files(
-                project_name, expected_chief_agents.encode("utf-8")
-            ).items():
-                if relative not in {Path("AGENTS.md"), Path(AGENT_OS_MANIFEST)}:
-                    continue
-                destination = target / relative
-                if destination.is_file() and destination.read_bytes() != expected:
-                    planned.append((destination, expected))
+        # Validation above/below still verifies canonical bytes. An ordinary
+        # initializer rerun is not authority to update managed policy content.
+        pass
 
     if preferences is not None and persist_preferences:
         preference_destination = target / ".chief-of-staff" / "preferences.json"
@@ -2458,6 +2491,17 @@ def initialize(
                         conflicts.append(Path(STRICT_LEDGER_PATH) / "snapshot.json")
                 else:
                     planned.append((ledger_snapshot, b'{"event_ids":{},"reports":{},"schema":"CHIEF_DELIVERY_LEDGER_V1"}\n'))
+
+    if existing_project is None and not conflicts:
+        _, identity, source_commit = work_execution._source_identity()
+        managed_files = {
+            str(path.relative_to(target)): hashlib.sha256(data).hexdigest()
+            for path, data in planned
+            if path.relative_to(target).as_posix() in {"AGENTS.md", ".agent-os/manifest.json"}
+        }
+        source_lock = {"schema_version": 2, "version": identity["version"], "source_commit": source_commit,
+                       "repository": "https://github.com/rong2qi/chief-of-staff-codex.git", "managed_files": managed_files}
+        planned.append((target / ".chief-of-staff/chief-lock.json", encoded_json(source_lock)))
 
     if conflicts:
         print("Chief of Staff initialization stopped; existing files differ:", file=sys.stderr)

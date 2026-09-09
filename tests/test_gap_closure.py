@@ -37,6 +37,12 @@ class GapClosureTests(unittest.TestCase):
             skill = root / "skill"
             source = Path(__file__).resolve().parents[1]
             shutil.copytree(source, skill, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+            # A pinned Chief source is now a real Git checkout, including in this fixture.
+            subprocess.run(["git", "init", str(skill)], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(skill), "add", "."], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(skill), "-c", "user.name=rong2qi",
+                            "-c", "user.email=249084307+rong2qi@users.noreply.github.com",
+                            "commit", "-m", "fixture source"], check=True, capture_output=True)
             script = skill / "scripts" / "init_project.py"
 
             def inventory(path):
@@ -56,6 +62,10 @@ class GapClosureTests(unittest.TestCase):
                 value = json.loads(project_json.read_text())
                 value.pop("agent_os_mode")
                 value.pop("agent_os_manifest")
+                for key in ("work_execution_version", "work_execution_adoption", "chief_version",
+                            "chief_schema_version", "chief_source_commit"):
+                    value.pop(key, None)
+                (project / ".chief-of-staff" / "chief-lock.json").unlink()
                 project_json.write_text(json.dumps(value, indent=2) + "\n")
                 (project / "AGENTS.md").write_text(
                     (skill / "assets" / "project-template" / "AGENTS.md").read_text()
@@ -121,6 +131,12 @@ class GapClosureTests(unittest.TestCase):
             # Recopy after the adversarial byte change so this gate binds a clean fixed source.
             shutil.rmtree(skill)
             shutil.copytree(source, skill, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+            # A pinned Chief source is now a real Git checkout, including in this fixture.
+            subprocess.run(["git", "init", str(skill)], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(skill), "add", "."], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(skill), "-c", "user.name=rong2qi",
+                            "-c", "user.email=249084307+rong2qi@users.noreply.github.com",
+                            "commit", "-m", "fixture source"], check=True, capture_output=True)
             script = skill / "scripts" / "init_project.py"
             adopted = legacy_project("adopted")
             trust = root / "trust"

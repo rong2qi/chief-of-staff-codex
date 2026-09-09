@@ -5,6 +5,8 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 ## project.json
 
 - `schema_version`: currently `1`.
+- `chief_version`, `chief_schema_version`, `chief_source_commit`: pinned Chief release `2.0.0`, contract schema `2`, and full source commit SHA for new/synced projects. These are distinct from retained state-file `schema_version` values.
+- `work_execution_version`: `WORK_EXECUTION_V1` for new or explicitly adopted projects; absence retains legacy execution behavior. Adoption is project-local and does not change preference/profile schemas.
 - `project_name`: initialized project name.
 - `primary_task_title`: generated as `Chief of <project_name>`, for example `Chief of 个人web`.
 - `pin_primary_task`: `false` for an ordinary Chief. It may be `true` only for a mandatory core role, an operator-approved optional Chief, or a grandmothered optional Chief pending value review. The matching evidence lives in `pin-state.json`.
@@ -22,8 +24,8 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `continuation_escalation_policy`: `existing_approval_boundaries` by default or `new_permission_or_new_chief` under the enabled continuation policy.
 - `require_goal_confirmation`: boolean; when `true`, implementation waits for explicit user confirmation of the final goal contract.
 - `project_classification_policy`: fixed `classify_after_goal_confirmation`.
-- `deliverable_product_discovery_policy`: fixed `required_before_production`.
-- `production_start_policy`: fixed `deny_until_product_discovery_passed_or_coordination_exempt`.
+- `deliverable_product_discovery_policy`: retained legacy policy, fixed `required_before_production`.
+- `production_start_policy`: retained legacy policy, fixed `deny_until_product_discovery_passed_or_coordination_exempt`.
 - `product_discovery_state_file`: fixed `.chief-of-staff/product-discovery.json`.
 - `legacy_allowlist_digest`: `null` for a new project; a legacy migration stores the SHA-256 digest of its one-time phase/task allowlist so later allowlist expansion fails validation.
 - `durable_goal_enabled`: boolean; enables durable goal tracking only after the final goal contract is confirmed.
@@ -46,6 +48,10 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 - `task_title_pattern`: non-Chief durable-role naming convention. Durable Chiefs use `Chief of <domain or project>｜<optional local-language label>`; the registered general office and TODO may omit the prefix, and the context migration monitor is a registered non-Chief system role that keeps its system title.
 - `approval_required`: actions that always require explicit user authorization.
 
+## chief-lock.json and project entry
+
+`chief-lock.json` records `schema_version: 2`, Chief `version`, full `source_commit`, source `repository`, and `managed_files` path-to-SHA-256 hashes. It detects pin drift and managed-content conflicts; it is not an authorization receipt. New/synced projects use `assets/chief-project-entry.md`, which loads the pinned source rules. `assets/project-template/AGENTS.md` remains a full compatibility fixture, not a second generic source to extend. User-owned `.chief-of-staff/project-overrides.md` remains separate and cannot widen authority or waive evidence requirements.
+
 ## pin-state.json
 
 - `role_class`: `ordinary_chief`, `mandatory_core`, `approved_optional_chief`, or `grandmothered_optional_chief`.
@@ -62,7 +68,7 @@ Pre-matriarchal pin-state enum values are accepted only by the centralized input
 
 ## product-discovery.json
 
-This mutable file is the single source of truth for project classification and the product-discovery gate. `project.json` contains only the fixed public policy.
+This mutable file retains project classification and legacy product-discovery evidence. For projects without V1 adoption it is the source of truth for the project-wide gate. V1 uses current work discovery in `project-plan.json.work_items` and preserves this evidence and applicable unresolved requirements; it does not fabricate a project-wide pass. `project.json` retains compatibility policy fields.
 
 - `classification_status`: `pending`, `classified`, or `legacy_unclassified`.
 - `project_classification`: `unclassified`, `deliverable_project`, or `coordination_only`.
@@ -89,6 +95,12 @@ This mutable file is the single source of truth for project classification and t
 - Each phase contains a unique `phase_id`, title, objective, status, `phase_class`, acceptance criteria, task IDs, and result summary. `phase_class` is `goal_discovery`, `product_discovery`, `production`, `coordination`, or migration-allowlisted `legacy_existing`.
 - `completed` is valid only for a confirmed goal with at least one acceptance criterion and non-empty evidence on every verified criterion.
 - Optional `execution_packages`: non-empty `CHIEF_EXECUTION_PACKAGE_V1` records. Each binds an approved queue `approval_id`, unique package/work IDs, exact project/root/branch and writer, `local_delivered` endpoint, finite local permissions/resources, acceptance, and stop conditions. Its absence preserves legacy behavior.
+
+### V1 work records
+
+`work_items` in `project-plan.json` records current work for `WORK_EXECUTION_V1`. A direct Chief work item can satisfy active-phase execution without a child registry entry. Records bind stable work identity, phase, actual work classification, sole writer and owned surfaces, discovery evidence, acceptance and review, cumulative finite budget and progress, and resource admission. See the [complete minimal record and accepted fields](work-execution.md#record-shape-and-minimal-queued-work-example); `work_history` retains admission attempts and their final-acceptance bindings. Do not synthesize alternate enum names from prose.
+
+The same underlying work retains its consumption and failure evidence across phases, candidates, owners, and renamed IDs. Adoption must preserve goal, task registry, approvals, historical discovery, ownership, and unknown extension fields. It does not create an approval or reset a stop. Both self and independent reviews need retained evidence; an independent reviewer must differ from the implementation writer.
 
 ## task-registry.json
 

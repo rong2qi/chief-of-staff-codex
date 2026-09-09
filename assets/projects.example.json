@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "name": "Example app",
+      "path": "../../example-app",
+      "pinned": true
+    },
+    {
+      "name": "Example service",
+      "path": "../../example-service",
+      "pinned": false
+    }
+  ]
+}

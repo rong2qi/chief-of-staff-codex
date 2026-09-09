@@ -58,6 +58,35 @@ def rehash_agent_os_file(target, relative):
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
 
+def legacy_full_contract(target):
+    """Model an actual pre-V1 project before exercising legacy migrations."""
+    project = read_state(target, "project.json")
+    project.pop("work_execution_version", None)
+    project.pop("work_execution_adoption", None)
+    for key in ("chief_version", "chief_schema_version", "chief_source_commit"):
+        project.pop(key, None)
+    write_state(target, "project.json", project)
+    plan = read_state(target, "project-plan.json")
+    plan.pop("work_items", None)
+    plan.pop("work_history", None)
+    write_state(target, "project-plan.json", plan)
+    for name in ("chief-lock.json", "project-overrides.md"):
+        (target / ".chief-of-staff" / name).unlink(missing_ok=True)
+    agents = (TEMPLATE / "AGENTS.md").read_text().replace("{{PROJECT_NAME}}", "Example")
+    for relative, data in init_project.agent_os.render_contract_files(
+        "Example", codex_instructions=agents
+    ).items():
+        (target / relative).write_bytes(data)
+
+
+def assert_thin_entry(case, target):
+    entry = (target / "AGENTS.md").read_text()
+    for phrase in ("Chief is the single source of generic behavior", "chief-lock.json",
+                   "SKILL.md", "references/work-execution.md", "never silently follow floating main"):
+        case.assertIn(phrase, entry)
+    return entry
+
+
 def confirm_goal(target):
     plan = read_state(target, "project-plan.json")
     plan.update(
@@ -310,8 +339,8 @@ class InitProjectTests(unittest.TestCase):
             agents_path = target / "AGENTS.md"
             agents_path.write_text(
                 agents_path.read_text().replace(
-                    "Deletion, production changes, release, payment, external messages, and permission expansion require explicit user authorization immediately before the action.",
-                    "Deletion, production changes, release, payment, external messages, and permission expansion never require authorization.",
+                    "It cannot expand permission, redefine generic Chief authority, erase failures, or waive required validation.",
+                    "It may expand permission and waive required validation.",
                     1,
                 )
             )
@@ -326,6 +355,7 @@ class InitProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
+            legacy_full_contract(target)
             project_path = target / ".chief-of-staff/project.json"
             project = read_state(target, "project.json")
             project.pop("agent_os_mode")
@@ -547,7 +577,10 @@ class InitProjectTests(unittest.TestCase):
             self.assertEqual(throughput["max_parallel_phase_lanes"], 2)
             self.assertIn("[features]\ngoals = true", (target / ".codex/config.toml").read_text())
             agents = (target / "AGENTS.md").read_text()
-            self.assertIn("Optional salutation, coaching, audio, and pause title", agents)
+            assert_thin_entry(self, target)
+            policy = (ROOT / "SKILL.md").read_text()
+            self.assertIn("Only when `american_english_coaching.enabled` is true", policy)
+            self.assertIn("When `audio_playback.enabled` is also true", policy)
             self.assertNotIn("End every complete user-facing reply", agents)
             self.assertFalse((target / ".chief-of-staff/deployment-registry.json").exists())
 
@@ -739,31 +772,29 @@ class InitProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
-            agents = (target / "AGENTS.md").read_text()
-            self.assertIn("Ordinary project Chiefs default to unpinned", agents)
-            self.assertIn("`general_office`, `todo`, `creative_director`, and `context_migration_monitor`", agents)
-            self.assertIn("Testing Director is ordinary/default-unpinned", agents)
-            self.assertIn("## Lifecycle capability discovery", agents)
-            self.assertIn("discover/evaluate/recommend only", agents)
-            self.assertIn("No-result, all-reject, and routine scans", agents)
-            self.assertIn("## Project path portability", agents)
-            self.assertIn("project-specific environment override", agents)
-            self.assertIn("stable `root_id` plus normalized project-relative POSIX paths", agents)
-            self.assertIn("Reject absolute project inputs, parent traversal", agents)
-            self.assertIn("paths that escape through a symlink", agents)
-            self.assertIn("Preserve absolute paths in historical audits", agents)
-            self.assertIn("`derived_from` set to the source hash", agents)
-            self.assertIn("operator explicitly approves that exact change", agents)
-            self.assertIn("Protect every manual non-Chief pin", agents)
-            self.assertIn("paired replacement recommendation", agents)
-            self.assertIn("does not confirm the project goal", agents)
-            self.assertIn("call `list_threads`", agents)
-            self.assertIn("exact task ID in `pinnedThreads`", agents)
-            self.assertIn("before final `MIGRATION_READY`", agents)
-            self.assertIn("before final `MIGRATION_READY`, takeover, or authoritative-entry switching", agents)
-            self.assertIn("`pin_verification_failed`", agents)
-            self.assertIn("create at most one replacement", agents)
-            self.assertIn("Never delete a predecessor, duplicate a Chief, change scope or pause state", agents)
+            assert_thin_entry(self, target)
+            governance = (ROOT / "references/pin-inheritance-governance.md").read_text()
+            for phrase in (
+                "Ordinary Chiefs default to unpinned",
+                "`general_office`, `todo`, `creative_director`, and `context_migration_monitor`",
+                "ordinary, default-unpinned, coordination-only evidence role",
+                "operator's explicit approval of that exact change",
+                "Protect every manual non-Chief pin", "paired replacement recommendation",
+                "does not confirm the project goal", "call `list_threads`",
+                "exact task ID in `pinnedThreads`", "pin_verification_failed",
+                "create at most one replacement", "Never delete predecessors",
+                "before final `MIGRATION_READY`, takeover, authoritative-entry switching",
+            ):
+                self.assertIn(phrase, governance)
+            capability = (ROOT / "references/capability-discovery-governance.md").read_text()
+            for phrase in ("discover_and_recommend_only", "No worthwhile candidate, all-reject, and routine scans",
+                           "does not authorize installation, pull, download, enablement"):
+                self.assertIn(phrase, capability)
+            portability = (ROOT / "references/project-path-portability.md").read_text()
+            for phrase in ("optional override", "stable `root_id`", "normalized project-relative POSIX paths",
+                           "Reject absolute input, parent traversal", "escapes through a symlink",
+                           "Preserve that evidence unchanged", "`derived_from`"):
+                self.assertIn(phrase, portability)
 
             skill = (ROOT / "SKILL.md").read_text()
             readme = (ROOT / "README.md").read_text()
@@ -778,19 +809,21 @@ class InitProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
-            agents = (target / "AGENTS.md").read_text()
+            assert_thin_entry(self, target)
+            governance = (ROOT / "references/automation-inheritance-governance.md").read_text()
             for phrase in (
-                "exact ID/name/kind/target/status/schedule/prompt SHA-256/notification policy",
+                "`id`, `name`, `kind`, `target_thread_id`, `status`, `schedule`, `prompt_sha256`, and `notification_policy`",
                 "Before takeover, authority switching, or predecessor archival",
-                "fresh live automation view", "automation_rebind_failed",
-                "bundle parity, automation parity, and applicable pin parity",
+                "Re-read the live automation view", "automation_rebind_failed",
+                "bundle parity, automation parity, and pin parity",
             ):
-                self.assertIn(phrase, agents)
+                self.assertIn(phrase, governance)
 
-    def test_previous_agents_contract_upgrades_with_automation_gate(self):
+    def test_previous_agents_contract_retains_without_implicit_automation_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
+            legacy_full_contract(target)
             agents_path = target / "AGENTS.md"
             agents = agents_path.read_text()
             agents = "\n".join(
@@ -799,28 +832,36 @@ class InitProjectTests(unittest.TestCase):
                 and "configuration reference or update receipt is not automation proof" not in line
             ) + "\n"
             agents_path.write_text(agents)
+            rehash_agent_os_file(target, "AGENTS.md")
+            before = tree_snapshot(target)
             upgraded = run(target)
             self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
-            self.assertIn("automation inheritance", agents_path.read_text())
+            self.assertEqual(tree_snapshot(target), before)
+            self.assertNotIn("automation inheritance", agents_path.read_text())
 
-    def test_previous_agents_contract_upgrades_with_portability_rule(self):
+    def test_previous_agents_contract_retains_without_implicit_portability_rule(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
+            legacy_full_contract(target)
             agents_path = target / "AGENTS.md"
             agents = agents_path.read_text()
             start = agents.index("\n## Project path portability\n")
             end = agents.index("\n## Effective throughput and durable goals\n", start)
             agents_path.write_text(agents[:start] + agents[end:])
+            rehash_agent_os_file(target, "AGENTS.md")
+            before = tree_snapshot(target)
             upgraded = run(target)
             self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
-            self.assertIn("## Project path portability", agents_path.read_text())
+            self.assertEqual(tree_snapshot(target), before)
+            self.assertNotIn("## Project path portability", agents_path.read_text())
             self.assertEqual(run(target, "--check").returncode, 0)
 
-    def test_pre_matriarchal_agents_contract_upgrades_without_conflict(self):
+    def test_pre_matriarchal_agents_contract_retains_without_implicitout_conflict(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
+            legacy_full_contract(target)
             agents_path = target / "AGENTS.md"
             agents = agents_path.read_text()
             agents = agents.replace(
@@ -828,9 +869,12 @@ class InitProjectTests(unittest.TestCase):
                 "Optional slots default to six and remain bounded by observed capacity. Protect every manual non-Chief pin.",
             )
             agents_path.write_text(agents)
+            rehash_agent_os_file(target, "AGENTS.md")
+            before = tree_snapshot(target)
             upgraded = run(target)
             self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
-            self.assertIn("grandmothered optional Chiefs", agents_path.read_text())
+            self.assertEqual(tree_snapshot(target), before)
+            self.assertNotIn("grandmothered optional Chiefs", agents_path.read_text())
 
     def test_fresh_ordinary_chief_is_unpinned_and_cannot_enter_successor_flow(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -911,6 +955,7 @@ class InitProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
+            legacy_full_contract(target)
             (target / ".chief-of-staff" / "pin-state.json").unlink()
             project = read_state(target, "project.json")
             project["pin_primary_task"] = True
@@ -927,6 +972,7 @@ class InitProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
+            legacy_full_contract(target)
             project = read_state(target, "project.json")
             project["pin_primary_task"] = True
             write_state(target, "project.json", project)
@@ -1212,6 +1258,7 @@ class InitProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
+            legacy_full_contract(target)
             (target / ".chief-of-staff/product-discovery.json").unlink()
             confirm_goal(target)
             plan = read_state(target, "project-plan.json")
@@ -1242,6 +1289,7 @@ class InitProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             self.assertEqual(run(target).returncode, 0)
+            legacy_full_contract(target)
             project = read_state(target, "project.json")
             for key in (
                 "project_classification_policy", "deliverable_product_discovery_policy",

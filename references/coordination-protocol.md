@@ -1,6 +1,6 @@
 # Coordination protocol
 
-Use this protocol for durable Codex tasks and temporary multi-agent meetings.
+Use this protocol for durable Codex tasks and temporary multi-agent meetings. For `WORK_EXECUTION_V1`, first apply [work-execution.md](work-execution.md): the Chief may execute directly, delegation requires benefit and reuse, and current work determines discovery, review, cumulative budget, and resource admission. Routing below describes delegated work; no child is required merely to keep a phase active.
 
 ## Execution contract
 
@@ -27,7 +27,7 @@ Coordination peers: <registered task IDs and bounded purpose, or none>
 Meeting permission: enabled | disabled; max participants: <n>
 ```
 
-## Routing
+## Legacy routing and delegated-work examples
 
 - Low risk, clear acceptance, one write surface: one task and one relevant check.
 - Medium risk or uncertain cross-file work: read-only scout → sole implementer → read-only verifier. Reuse the registered Testing Director for applicable independent quality work and the registered Creative Director for visual review; include registry identity, source owner, frozen handoff, and independence boundary. Do not create a duplicate Chief or treat a temporary subagent as a long-running hub. For a small check, keep the work in the source Chief unless independence is materially useful.
@@ -40,15 +40,15 @@ Use Luna for read-only exploration and routine verification, Terra for the sole 
 
 Before implementation, the Chief proposes and asks the user to confirm the final goal, deliverables, acceptance criteria, non-goals, and constraints. Store the request as `goal_confirmation` and keep `project_status: awaiting_goal`. A new project permits only read-only discovery that materially helps clarify the goal. During migration, already-running non-high-impact tasks may finish, but no new task or phase starts before confirmation.
 
-After confirmation, classify the project before creating another phase or task. Apply [product-discovery-governance.md](product-discovery-governance.md). A `coordination_only` project records a concrete exemption and may create coordination work only. A `deliverable_project` appoints one Product Manager depth-2 phase lead and completes the four-lane product-discovery gate before creating or starting production execution. Immediately before production task creation, run the initializer's `--check`; a nonzero result is a hard stop.
+For projects without V1 adoption only: after confirmation, classify the project before creating another phase or task. Apply [product-discovery-governance.md](product-discovery-governance.md). A `coordination_only` project records a concrete exemption and may create coordination work only. A `deliverable_project` appoints one Product Manager depth-2 phase lead and completes the four-lane product-discovery gate before creating or starting production execution. Immediately before production task creation, run the initializer's `--check`; a nonzero result is a hard stop.
 
-The Product Manager manages project initiation, requirements analysis, market research, and advisory architecture feasibility through depth-3 temporary helpers that cannot delegate. If the runtime lacks subagents, the Product Manager completes the four lanes itself and records the limitation without dropping any artifact or evidence requirement. Product discovery cannot bind the later Technical Lead's architecture, bypass the Creative Director, invent market/user evidence, or authorize outreach, paid/restricted data, or another protected action.
+In that legacy flow, the Product Manager manages project initiation, requirements analysis, market research, and advisory architecture feasibility through depth-3 temporary helpers that cannot delegate. If the runtime lacks subagents, the Product Manager completes the four lanes itself and records the limitation without dropping any artifact or evidence requirement. Product discovery cannot bind the later Technical Lead's architecture, bypass the Creative Director, invent market/user evidence, or authorize outreach, paid/restricted data, or another protected action.
 
-After the applicable gate passes or exemption validates, create the next ordered phase and start at least one current-phase task. Completing a phase never completes the project by itself. Set `project_status: completed` only when every final acceptance criterion is `verified` and has non-empty evidence.
+After applicable discovery passes, start the next safe current work. V1 permits a direct Chief work item; legacy projects require at least one current-phase task. Completing a phase never completes the project by itself. Set `project_status: completed` only when every final acceptance criterion is `verified` and has non-empty evidence.
 
-While the project is unfinished, keep an active or queued phase task unless the project is explicitly `awaiting_user` or verifiably `blocked`. If every task stops before final acceptance, dispatch the next safe in-scope phase immediately.
+While the project is unfinished, keep an active or queued work item (V1) or phase task (legacy) unless the project is explicitly `awaiting_user` or verifiably `blocked`. If current execution stops before final acceptance, advance the next admitted safe in-scope work through direct execution or justified delegation.
 
-When the projected continuation policy is `advance_best_safe_in_scope_path`, select and execute the strongest evidence-backed safe in-scope continuation without opening an operator choice. Do not offer stopping, preserving a failed state, or delaying as peer options while such a path exists. Escalate only when continuing itself requires a new permission or a new Chief. Ordinary failure remains Chief-owned while a bounded diagnostic, repair, or verification path remains. The policy does not authorize production before the product gate, protected actions, bypassed visual selection, concealed safety evidence, transferred ownership, or expanded goals.
+When the projected continuation policy is `advance_best_safe_in_scope_path`, select and execute the strongest evidence-backed safe in-scope continuation without opening an operator choice. Do not offer stopping, preserving a failed state, or delaying as peer options while such a path exists. Escalate only when continuing itself requires a new permission or a new Chief. Ordinary failure remains Chief-owned while a bounded diagnostic, repair, or verification path remains. The policy does not bypass applicable work discovery (V1) or the legacy product gate, protected actions, bypassed visual selection, concealed safety evidence, transferred ownership, or expanded goals.
 
 ## Project path portability
 
@@ -163,4 +163,4 @@ Escalate to the user only for:
 - a product choice with meaningfully different outcomes that evidence cannot resolve;
 - final project acceptance and completion.
 
-If the same blocker survives the initial attempt plus two focused follow-ups, reassess the remaining safe in-scope paths. Under the enabled continuation policy, continue with the strongest evidenced alternative; stop and report only when no safe authorized path remains or continuing itself requires a new permission or a new Chief. Otherwise report evidence, attempted remedies, and the exact decision needed.
+For V1, two consecutive stagnant rounds require independent diagnosis and all continuation must fit the cumulative finite work budget. For legacy projects, if the same blocker survives the initial attempt plus two focused follow-ups, reassess the remaining safe in-scope paths. Under the enabled continuation policy, continue with the strongest evidenced alternative; stop and report only when no safe authorized path remains or continuing itself requires a new permission or a new Chief. Otherwise report evidence, attempted remedies, and the exact decision needed.

@@ -1,6 +1,8 @@
 # Product discovery governance
 
-Apply this gate to every Chief-managed project after the initial mission and goal boundary are confirmed and before production execution begins.
+For `WORK_EXECUTION_V1`, classify discovery per current work under [work-execution.md](work-execution.md). New products require the full evidence substance below; product changes require affected discovery with explicit reuse of valid prior evidence. Operational work, repairs, and technical investigations follow their bounded evidence needs. Full new-product discovery retains the existing Product Manager phase lead and four-lane schema/workflow; V1 direct execution does not waive this requirement. Applicable unresolved product requirements still block affected implementation.
+
+The whole-project gate below applies to projects without V1 adoption. Its complete Product Manager, lane, helper, and evidence requirements also apply when V1 current work is `new_product`. Evidence integrity, review boundaries, and protected-action rules apply to both versions.
 
 ## Classification
 
@@ -54,6 +56,6 @@ The Product Manager may record experience goals and visual questions. Clickable 
 
 Gate passage does not authorize deletion, production changes, release, payment, external messages, permission expansion, or another separately protected action.
 
-## Legacy projects
+## Legacy projects without V1 adoption
 
 When an older project lacks product-discovery state, migrate it to `legacy_unclassified` and `legacy_pending`. Preserve its existing task and phase IDs in the migration allowlist, anchor that snapshot with the immutable digest in `project.json`, and mark only those records `legacy_existing`. They may finish already-running non-high-impact work. Any later allowlist expansion or new record that claims legacy status fails validation. Before the next production phase, classify the project and complete either the coordination exemption or the deliverable gate; never infer `passed` or `exempt` during migration.
