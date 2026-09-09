@@ -11,6 +11,10 @@ metadata:
 
 Before applying any workflow below, read [Neo Lean Router](assets/neo-lean-router.md). Default to DIRECT; use LEAN for bounded investigation; enter CHIEF only on explicit task-level request or at least two independent complexity signals. The remaining sections apply only to CHIEF and are subordinate to the Neo resource, retry, discovery-exemption and acceptance-stop rules. Install the router into Neo's global AGENTS.md as documented in [references/neo-8gb-lean.md](references/neo-8gb-lean.md) so ordinary tasks receive it without invoking this skill.
 
+## Build management contract
+
+For build/package work or changes to build management, apply [build execution governance](references/build-execution-governance.md): bind the actual task repository, static-first/Gradle-last, preserve artifacts independently of release eligibility, and keep source repairs in Git. These rules also apply to DIRECT/LEAN via the router.
+
 ## 新增执行政策 / New execution policy
 
 - 默认 `effective_throughput`：Neo 最多一个阶段 lane、一个活动 writer，每个检查点必须产生可验证证据；连续两个检查点无证据即停止并自查。

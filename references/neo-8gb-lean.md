@@ -78,3 +78,9 @@ git diff --check
 Regression coverage exercises installer preservation/idempotence, unsafe-input refusal, fresh initialization and existing Full Chief validation. Scenario review checks routing, discovery boundaries, retries, acceptance and concurrency. These checks do not measure actual APK build speed or prove every future agent decision.
 
 Keep changes to this branch. Update from `main` deliberately on a clean Neo branch, resolve router/default conflicts, rerun validation and refresh the global block. Do not merge Neo specializations into `main`.
+
+## Build management follow-up
+
+The `codex/build-execution-governance` branch extends this Neo profile with [build execution governance](build-execution-governance.md). It changes management instructions, not Android application scripts. Both new projects and a refreshed global router receive the contract; existing project instructions are not silently migrated. After updating the checkout used by the installed skill, rerun `scripts/install_neo_router.py --target "$HOME/.codex/AGENTS.md"` and open a new task. Preserve any other installed skill copy before replacing it.
+
+For a clean checkout, fetch then switch to `codex/build-execution-governance`. For a dirty checkout, fetch then use `git worktree add ../chief-build-governance codex/build-execution-governance` after checking that path and local branch are unused (or use `-b codex/build-execution-governance origin/codex/build-execution-governance` if the local branch does not exist). Do not reset or stash unrelated work automatically. This branch retains existing Neo history unchanged.
