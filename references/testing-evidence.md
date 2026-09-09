@@ -1,4 +1,4 @@
-# Evidence-aware Testing / delta gate — v2.0.1
+# Evidence-aware Testing / delta gate — v2.0.2
 
 ## Rule and boundary
 
@@ -55,9 +55,11 @@ dependency metadata can never manufacture their PASS. For independently frozen
 modules, explicit provider paths in `dependency_paths` are another supported
 way to describe the closure.
 
-`CHIEF_FROZEN_TESTING_EVIDENCE_V1` retains the subject, original execution package,
+`CHIEF_FROZEN_TESTING_EVIDENCE_V2` retains the subject, original execution package,
 native return observation, gate reference/hash/issuer/status, conclusion and
-`evidence_hash`. `observations[test_id]` contains input and dependency snapshots,
+`evidence_hash`. Its `evidence_metadata` binds a stable evidence ID, RFC 3339
+timestamp, result, risk/scope and the tested paths/assets. V1 frozen bundles
+remain readable; new freezes use V2. `observations[test_id]` contains input and dependency snapshots,
 `dependency_fingerprint` and definition hash. Fingerprints include Git modes,
 object types and blob IDs, keyed by full path. A commit SHA is distinct from the
 existing `candidate_sha256`: the latter binds the canonical whole subject digest
@@ -154,15 +156,16 @@ checked out. Prior candidates must remain available as full Git objects.
 
 ## Compatibility
 
-Project schema remains **2**, `WORK_EXECUTION_V1` stays unchanged. The new evidence
-and delta records have independent V1 schema labels; no destructive migration is
-needed. Old self-checks, manifest-only gates and legacy receipts without the
+Project schema remains **2**, `WORK_EXECUTION_V1` stays unchanged. The V2 frozen
+evidence record is additive and its reader accepts V1, so no destructive project
+migration is needed. Subject and delta schemas remain V1. Old self-checks,
+manifest-only gates and legacy receipts without the
 bound Git subject cannot be automatically upgraded: retain them and retest the
 unprovable scope. Independently gated activation/non-Git adapters retain their
 current exact-hash validation. Historical full AGENTS templates remain unchanged
 so existing sync preimage recognition works; current thin AGENTS points here.
 
-Sync/fleet-sync supports exact `v2.0.0` and `v2.0.1` source tags, validates schema
+Sync/fleet-sync supports exact `v2.0.0`, `v2.0.1`, and `v2.0.2` source tags, validates schema
 and migration only, and preserves business files, work history and user overrides.
 Updating Chief itself is not a reason to rebuild or retest every business module.
 If an adopted Chief change affects a particular validation rule, declare that

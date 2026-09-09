@@ -1,0 +1,62 @@
+{
+  "schema": "CHIEF_TESTING_DOGFOOD_V1",
+  "cases": [
+    {
+      "name": "skill install + empty Testing",
+      "kind": "decision",
+      "before": "Testing round trip returned items=[] and the install waited",
+      "delta": {
+        "impact_map": [{"test_id": "skill-load", "classification": "RETEST_REQUIRED", "source_candidate_sha": null, "changed_paths": ["skills/example/SKILL.md"], "reasons": ["new deterministic files"]}],
+        "testing_payload": {"candidate_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "tests": [{"test_id": "skill-load", "scope": "skill discovery"}]}
+      },
+      "policy": {"risk_level": "L0", "local_evidence_sufficient": true, "new_risks": ["new deterministic files"]},
+      "expect": "LOCAL_CHECK_PASS with zero Testing round trips"
+    },
+    {
+      "name": "Ali candidate + Testing pending",
+      "kind": "modules",
+      "before": "static checks completed, then Chief waited for Testing",
+      "modules": [
+        {"module_id": "ali", "testing_status": "TESTING_PENDING", "risk_level": "L2"},
+        {"module_id": "next-static", "runnable": true, "risk_level": "L1"}
+      ],
+      "expect": "next-static continues"
+    },
+    {
+      "name": "Creative multi-round adjustment",
+      "kind": "creative",
+      "before": "each visual revision opened a Testing round trip",
+      "revisions": [
+        {"new_risks": []}, {"new_risks": []}, {"new_risks": []}, {"new_risks": []}, {"new_risks": []}
+      ],
+      "policy": {"risk_level": "L1"},
+      "expect": "five revisions, zero Testing round trips"
+    },
+    {
+      "name": "APK fast path + dependency ready",
+      "kind": "events",
+      "before": "TESTING_DEPENDENCY_READY preempted assembleRelease progress",
+      "build_critical_path": true,
+      "events": [
+        {"type": "TESTING_DEPENDENCY_READY"},
+        {"type": "BUILD_SUCCEEDED", "artifact": "release.apk"}
+      ],
+      "expect": "BUILD_SUCCEEDED is consumed first"
+    },
+    {
+      "name": "integration of tested components",
+      "kind": "decision",
+      "before": "integration invalidated every passed component",
+      "delta": {
+        "impact_map": [
+          {"test_id": "m1", "classification": "INHERITED_PASS", "source_candidate_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "evidence_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "changed_paths": [], "reasons": ["unchanged"]},
+          {"test_id": "m2", "classification": "INHERITED_PASS", "source_candidate_sha": "cccccccccccccccccccccccccccccccccccccccc", "evidence_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "changed_paths": [], "reasons": ["unchanged"]},
+          {"test_id": "integration-smoke", "classification": "INTEGRATION_ONLY", "source_candidate_sha": null, "changed_paths": [], "reasons": ["combination-only wiring/shared-state risk"]}
+        ],
+        "testing_payload": {"candidate_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "tests": [{"test_id": "integration-smoke", "scope": "minimum combination smoke"}]}
+      },
+      "policy": {"risk_level": "L2", "why_local_insufficient": "first combined runtime interaction needs independent observation"},
+      "expect": "only integration-smoke is requested"
+    }
+  ]
+}

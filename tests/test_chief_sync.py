@@ -90,6 +90,20 @@ class ChiefSyncTests(unittest.TestCase):
         git(self.source, 'commit', '-qm', 'after tag')
         self.assertEqual(self.api.sync_repository(self.target, source=self.source)['status'], 'conflict')
 
+    def test_v202_release_requires_exact_matching_tag(self):
+        version = self.source / 'chief-version.json'
+        value = json.loads(version.read_text())
+        value['version'] = '2.0.2'
+        version.write_text(json.dumps(value))
+        git(self.source, 'add', '.')
+        git(self.source, 'commit', '-qm', 'v2.0.2 release')
+        self.assertEqual(self.api.sync_repository(self.target, source=self.source)['status'], 'conflict')
+        git(self.source, 'tag', 'v2.0.2')
+        result = self.api.sync_repository(self.target, source=self.source)
+        self.assertEqual(result['status'], 'success', result)
+        self.assertEqual(result['source_version'], '2.0.2')
+        self.assertEqual(result['branch'], 'chief/adopt-2.0.2')
+
     def test_dirty_business_uses_worktree_preserving_original(self):
         original_branch = git(self.target, 'branch', '--show-current')
         (self.target / 'business.txt').write_text('uncommitted work')
@@ -124,6 +138,9 @@ class ChiefSyncTests(unittest.TestCase):
 
     def test_real_patch_release_fleet_migration_preserves_user_state(self):
         self.real_source_sync_schema_and_repeat('2.0.1')
+
+    def test_real_v202_fleet_migration_preserves_user_state(self):
+        self.real_source_sync_schema_and_repeat('2.0.2')
 
     def real_source_sync_schema_and_repeat(self, version):
         import shutil

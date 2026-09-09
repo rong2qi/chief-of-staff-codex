@@ -7,19 +7,21 @@ metadata:
 
 # Chief of Staff
 
-## Evidence-aware Testing (Chief 2.0.1)
+## Evidence-aware, risk-based, non-blocking Testing (Chief 2.0.2)
 
 Already-passed frozen evidence must be reused when its scope, code, resources,
 contracts, inputs and reviewed dependency closure remain valid. Phase changes
-alone cannot trigger full retesting. Use [the delta gate contract](references/testing-evidence.md)
-and `scripts/testing_evidence.py` at Git candidate freeze, integration and
-handoff acceptance: compute actual Git diff and dependency impact, classify
-`INHERITED_PASS`, `RETEST_REQUIRED`, and `INTEGRATION_ONLY`, and dispatch only the
-last two classes to Testing. Unknown validity defaults to retest. Original
-native `TESTING_GATE_PASS` authority is mandatory; hashes, transport ACKs and
-self-checks cannot manufacture it. Keep source/current candidate SHAs, gate
-hashes and impact reasons for audit. `accept` must freshly validate provenance
-and delta returns; `DELTA_GATE_READY` is not a new Testing PASS or permission.
+alone cannot trigger Testing. At candidate freeze, integration and acceptance,
+use [the evidence model](references/testing-evidence.md) to compute actual Git
+diff and dependency impact, then use [the risk-based control](references/testing-control.md)
+and `scripts/testing_control.py` to decide whether a justified delta request is
+needed. L0 stays deterministic/local; L1 stays local by default; L2 requests only
+the new-risk delta; L3 or explicit `SYNC_TESTING_REQUIRED` blocks only its
+dangerous action. `TESTING_PENDING` and `TESTING_INFRA_ERROR` never idle unrelated
+work. Telemetry/transport ACK, READY, STARTED and progress events are record-only
+and cannot preempt implementer, build or user events. One delivery gets at most
+one automatic retry. Native `TESTING_GATE_PASS` remains the only Testing PASS;
+local checks, inherited evidence, ACKs and `DELTA_GATE_READY` cannot manufacture it.
 
 ## 新增执行政策 / New execution policy
 

@@ -90,6 +90,23 @@ class TestingEvidenceTests(unittest.TestCase):
         self.assertEqual(result['impact_map'][0]['source_candidate_sha'], self.base)
         self.assertEqual(result['impact_map'][0]['original_testing_gate']['status'], 'TESTING_GATE_PASS')
 
+    def test_v2_evidence_records_identity_time_result_risk_and_assets(self):
+        evidence = self.freeze()
+        self.assertEqual(evidence['schema'], 'CHIEF_FROZEN_TESTING_EVIDENCE_V2')
+        metadata = evidence['evidence_metadata']
+        self.assertEqual(metadata['evidence_id'], evidence['observed']['native_receipt_sha256'])
+        self.assertEqual(metadata['result'], 'TESTING_GATE_PASS')
+        self.assertEqual(metadata['risk_scope'], {'risk': 'high', 'scope': 'frozen evidence subject'})
+        self.assertEqual(metadata['tested_paths_assets'], ['m1', 'm2'])
+        self.assertTrue(metadata['timestamp'].endswith('Z'))
+
+    def test_v1_frozen_evidence_remains_inheritable_without_migration(self):
+        evidence = self.freeze()
+        evidence['schema'] = 'CHIEF_FROZEN_TESTING_EVIDENCE_V1'
+        evidence.pop('evidence_metadata')
+        evidence['evidence_hash'] = self.api.digest({k: v for k, v in evidence.items() if k != 'evidence_hash'})
+        self.assertEqual(set(self.states(self.plan([evidence])).values()), {'INHERITED_PASS'})
+
     def test_unrelated_file_change_inherits(self):
         evidence = self.freeze()
         self.commit('notes.md')

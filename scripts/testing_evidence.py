@@ -7,6 +7,7 @@ Native observation storage is a host-controlled trust boundary, as in Ledger.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -22,7 +23,8 @@ except ImportError:
     import retry_policy
 
 SUBJECT = 'CHIEF_TESTING_SUBJECT_V1'
-EVIDENCE = 'CHIEF_FROZEN_TESTING_EVIDENCE_V1'
+LEGACY_EVIDENCE = 'CHIEF_FROZEN_TESTING_EVIDENCE_V1'
+EVIDENCE = 'CHIEF_FROZEN_TESTING_EVIDENCE_V2'
 DELTA = 'CHIEF_TESTING_DELTA_V1'
 FIELDS = {'test_id', 'scope', 'tested_paths', 'tested_inputs', 'dependency_paths',
           'depends_on', 'dependency_closure_complete'}
@@ -169,13 +171,30 @@ def _native_pass(repo, subject, package, observed, native_root):
         os.close(descriptor)
 
 
-def freeze(repo, subject, package, observed, native_root):
+def freeze(repo, subject, package, observed, native_root, *, recorded_at=None):
     """Validate, never issue, a Testing gate and retain its immutable subject."""
     if not isinstance(subject, dict) or subject != _subject(repo, subject['candidate_sha'], subject['tests'], subject.get('dependency_specs')):
         raise EvidenceError('subject no longer matches its exact Git inputs')
     gate = _native_pass(repo, subject, package, observed, native_root)
+    timestamp = recorded_at or datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    if not isinstance(timestamp, str):
+        raise EvidenceError('evidence timestamp must be an RFC 3339 string')
+    try:
+        datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+    except ValueError as exc:
+        raise EvidenceError('evidence timestamp must be an RFC 3339 string') from exc
+    policy = package.get('testing_policy', {})
+    metadata = {
+        'evidence_id': observed['native_receipt_sha256'],
+        'timestamp': timestamp,
+        'result': gate['status'],
+        'risk_scope': {'risk': policy.get('risk'), 'scope': policy.get('scope')},
+        'tested_paths_assets': sorted({path for test in subject['tests']
+                                      for key in ('tested_paths', 'tested_inputs') for path in test[key]}),
+    }
     result = {'schema': EVIDENCE, 'subject': subject, 'package': package,
-              'observed': observed, 'original_testing_gate': gate, 'conclusion': 'TESTING_GATE_PASS'}
+              'observed': observed, 'original_testing_gate': gate,
+              'evidence_metadata': metadata, 'conclusion': 'TESTING_GATE_PASS'}
     # Detach mutable caller state so a later edit cannot alter retained evidence.
     result = json.loads(json.dumps(result))
     result['evidence_hash'] = digest(result)
@@ -183,15 +202,37 @@ def freeze(repo, subject, package, observed, native_root):
 
 
 def _verify(repo, evidence, native_root):
-    if not isinstance(evidence, dict) or evidence.get('schema') != EVIDENCE:
+    if not isinstance(evidence, dict) or evidence.get('schema') not in {LEGACY_EVIDENCE, EVIDENCE}:
         raise EvidenceError('frozen evidence missing or unsupported')
     unsigned = {k: v for k, v in evidence.items() if k != 'evidence_hash'}
     if digest(unsigned) != evidence.get('evidence_hash'):
         raise EvidenceError('evidence hash mismatch')
-    checked = freeze(repo, evidence['subject'], evidence['package'], evidence['observed'], native_root)
-    if checked != evidence:
+    subject = evidence['subject']
+    if subject != _subject(repo, subject['candidate_sha'], subject['tests'], subject.get('dependency_specs')):
+        raise EvidenceError('frozen evidence subject no longer matches its exact Git inputs')
+    gate = _native_pass(repo, subject, evidence['package'], evidence['observed'], native_root)
+    if evidence.get('original_testing_gate') != gate or evidence.get('conclusion') != 'TESTING_GATE_PASS':
         raise EvidenceError('frozen evidence does not match original Testing gate')
-    return checked
+    if evidence['schema'] == EVIDENCE:
+        metadata = evidence.get('evidence_metadata')
+        policy = evidence['package'].get('testing_policy', {})
+        expected = {
+            'evidence_id': evidence['observed']['native_receipt_sha256'],
+            'result': 'TESTING_GATE_PASS',
+            'risk_scope': {'risk': policy.get('risk'), 'scope': policy.get('scope')},
+            'tested_paths_assets': sorted({path for test in subject['tests']
+                                          for key in ('tested_paths', 'tested_inputs') for path in test[key]}),
+        }
+        if not isinstance(metadata, dict) or any(metadata.get(key) != value for key, value in expected.items()):
+            raise EvidenceError('evidence metadata does not match the tested subject and gate')
+        timestamp = metadata.get('timestamp')
+        if not isinstance(timestamp, str):
+            raise EvidenceError('evidence timestamp is missing')
+        try:
+            datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        except ValueError as exc:
+            raise EvidenceError('evidence timestamp is invalid') from exc
+    return json.loads(json.dumps(evidence))
 
 
 def plan(repo, candidate_sha, tests, evidence, native_root, *, integration=False):
@@ -353,7 +394,8 @@ def main(argv=None):
             if args.native_root is None:
                 raise EvidenceError('host-provided --native-root is required')
             if args.command == 'freeze':
-                result = freeze(args.repo, request['subject'], request['package'], request['observed'], args.native_root)
+                result = freeze(args.repo, request['subject'], request['package'], request['observed'], args.native_root,
+                                recorded_at=request.get('recorded_at'))
             elif args.command == 'plan':
                 result = plan(args.repo, request['candidate_sha'], request['tests'], request['evidence'],
                               args.native_root, integration=request.get('integration', False))

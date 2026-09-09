@@ -65,7 +65,7 @@ def _dirty_paths(target):
 
 def _source_info(source):
     version = json.loads((source / 'chief-version.json').read_text())
-    if (not isinstance(version, dict) or version.get('version') not in {'2.0.0', '2.0.1'}
+    if (not isinstance(version, dict) or version.get('version') not in {'2.0.0', '2.0.1', '2.0.2'}
             or version != {'version': version.get('version'), 'schema_version': 2,
                            'work_execution_version': 'WORK_EXECUTION_V1'}):
         raise SyncConflict('unsupported or invalid chief-version.json')
