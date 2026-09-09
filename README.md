@@ -1,3 +1,5 @@
+> **Neo 8GB 私人分支 `neo-8gb-lean`**：默认 DIRECT → LEAN → CHIEF。普通 build/package/run/debug 不新建产品发现流程；最多一个阶段 lane、一个 writer，同类失败最多两次重试，验收即停。先阅读 [Neo 安装、更新与验证说明](references/neo-8gb-lean.md)。下文 Full Chief 功能均保留；Neo 路由和资源限制优先于下文旧默认值。只复制 Skill 不会使路由成为全局默认，需安装 Neo AGENTS 入口。
+
 # Chief of Staff for Codex / Codex 幕僚长
 
 > 通过一个统一负责的主任务、按职务命名的长期任务，以及临时子代理会议来协调 Codex 项目。
@@ -158,11 +160,11 @@ python3 ~/.codex/skills/chief-of-staff/scripts/configure_preferences.py \
   "require_goal_confirmation": true,
   "durable_goal_enabled": true,
   "execution_mode": "effective_throughput",
-  "max_parallel_phase_lanes": 2,
+  "max_parallel_phase_lanes": 1,
   "no_evidence_checkpoint_limit": 2,
   "max_management_depth": 3,
   "auto_advance_low_impact": true,
-  "proactive_follow_up": true,
+  "proactive_follow_up": false,
   "visual_selection_gate": "disabled",
   "visual_review_hub_title": "Chief of Creative Direction｜创意总监",
   "durable_child_scope": "same_project",
@@ -461,11 +463,11 @@ When no project name is supplied, the initializer uses the project root director
   "require_goal_confirmation": true,
   "durable_goal_enabled": true,
   "execution_mode": "effective_throughput",
-  "max_parallel_phase_lanes": 2,
+  "max_parallel_phase_lanes": 1,
   "no_evidence_checkpoint_limit": 2,
   "max_management_depth": 3,
   "auto_advance_low_impact": true,
-  "proactive_follow_up": true,
+  "proactive_follow_up": false,
   "visual_selection_gate": "disabled",
   "visual_review_hub_title": "Chief of Creative Direction｜创意总监",
   "durable_child_scope": "same_project",

@@ -5,6 +5,8 @@ description: Reduce avoidable token and context overhead while completing coding
 
 # KAI Lean Execution
 
+On the Neo branch, the core discipline is already active through the installed Neo Lean Router; explicit invocation of this companion is optional. The router's stricter concurrency and retry ceilings prevail.
+
 Deliver the full requested outcome with the smallest sufficient investigation, coordination, and report.
 
 ## Lock the execution contract

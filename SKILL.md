@@ -7,9 +7,13 @@ metadata:
 
 # Chief of Staff
 
+## Neo branch entrypoint
+
+Before applying any workflow below, read [Neo Lean Router](assets/neo-lean-router.md). Default to DIRECT; use LEAN for bounded investigation; enter CHIEF only on explicit task-level request or at least two independent complexity signals. The remaining sections apply only to CHIEF and are subordinate to the Neo resource, retry, discovery-exemption and acceptance-stop rules. Install the router into Neo's global AGENTS.md as documented in [references/neo-8gb-lean.md](references/neo-8gb-lean.md) so ordinary tasks receive it without invoking this skill.
+
 ## 新增执行政策 / New execution policy
 
-- 默认 `effective_throughput`：最多两个独立阶段并行，每个检查点必须产生可验证证据；连续两个检查点无证据即停止并自查。
+- 默认 `effective_throughput`：Neo 最多一个阶段 lane、一个活动 writer，每个检查点必须产生可验证证据；连续两个检查点无证据即停止并自查。
 - `/goal` 仅用于已确认、可验收且没有人工审批门的目标。`durable_goal_enabled` 不会绕过目标确认或高影响操作审批。
 - 默认汇报审查采用 `exception_only`：Chief 自行验收普通岗位进度与交接，只把目标确认、实质产品选择、视觉选择、高影响操作、安全问题、范围/所有权冲突、失败或证据不足、扩层和项目最终交付升级给操作者。
 - 创意总监只在北京时间每天 11:00 和 20:00 执行有证据的主动扫描；最多保留一条待定创意建议。它同时是启用视觉确认门时唯一面向操作者的视觉审阅中心：可接收项目 Chief 的预览包、维护视觉待决队列，并在操作者决定后把原话回传来源 Chief。除这种有登记来源的视觉决定回传外，它只读其他项目、不主动干预、不修改项目文件。
@@ -24,7 +28,7 @@ metadata:
 - 所有长期 Chief 任务的标题必须以 `Chief of ` 开头；登记的全局总务、TODO 与非 Chief 上下文迁移监视器属于标题例外。其他非 Chief 长期岗位继续使用 `职务｜工作内容`。用户给出的中文职位名应保留为 `｜` 后的说明，不得因此省略 Chief 前缀。
 - 所有创建或实质改变产品、服务、代码、设计、内容资产或其他验收交付物的 Chief 项目，在目标边界确认后、生产执行前必须完成产品分类和产品发现门。仅同步、推送既定变更、会议总结、备案/流程推进或只读审计汇总可记录理由后豁免。
 
-- Default `effective_throughput` permits at most two independent phase lanes. Every checkpoint needs verifiable evidence; stop and self-check after two evidence-free checkpoints.
+- Neo `effective_throughput` permits at most one active phase lane and one active writer. Every checkpoint needs verifiable evidence; stop and self-check after two evidence-free checkpoints.
 - Use `/goal` only for a confirmed, testable goal with no human gate. `durable_goal_enabled` never bypasses confirmation or protected-action approval.
 - Report review defaults to `exception_only`: the Chief reviews routine role progress and handoffs, escalating only goal confirmation, material product choices, visual choices, protected actions, safety issues, scope or ownership conflicts, failed or unverifiable work, depth expansion, and final project completion.
 - The Creative Director runs evidence-backed proactive scans at 11:00 and 20:00 Beijing time and retains at most one pending creative recommendation. When the visual gate is enabled, it is also the only operator-facing visual review hub: it receives preview packets, owns the visual decision queue, and relays the operator's exact decision back to the source Chief. Outside that registered relay, it remains read-only and does not interfere with project work.

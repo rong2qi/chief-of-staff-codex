@@ -147,6 +147,9 @@ def render(source: Path, project_name: str, preferences: Optional[dict] = None) 
             )
             project["visual_review_hub_title"] = visual["review_hub_title"]
         return encoded_json(project)
+    if source.relative_to(TEMPLATE_ROOT) == Path("AGENTS.md"):
+        router = (TEMPLATE_ROOT.parent / "neo-lean-router.md").read_text(encoding="utf-8").strip()
+        rendered = router + "\n\n" + rendered
     return rendered.encode("utf-8")
 
 
@@ -249,7 +252,7 @@ def migrate_mutable_state(
         defaults = {
             "schema_version": 1,
             "execution_mode": "effective_throughput",
-            "max_parallel_phase_lanes": 2,
+            "max_parallel_phase_lanes": 1,
             "no_evidence_checkpoint_limit": 2,
             "consecutive_no_evidence_checkpoints": 0,
             "active_phase_lanes": [],
@@ -1904,6 +1907,9 @@ def compatible_chief_agents(text: str, expected: str) -> bool:
     known_one_cycle_payload_sha256 = "486737cd990a2c1389dc14a92df7cf291c2a8c31e227e4f80f3380044ba8d8d5"
     if hashlib.sha256(preserved.encode("utf-8")).hexdigest() == known_one_cycle_payload_sha256:
         return True
+    router_prefix = (TEMPLATE_ROOT.parent / "neo-lean-router.md").read_text(encoding="utf-8").strip() + "\n\n"
+    if expected.startswith(router_prefix) and compatible_chief_agents(text, expected[len(router_prefix):]):
+        return True
     variants = {expected}
     variants.add(
         "\n".join(
@@ -2379,6 +2385,16 @@ def initialize(
                 compatibility_variants.update(
                     item.replace(new_audio, old_audio)
                     for item in tuple(compatibility_variants)
+                )
+                router_prefix = (TEMPLATE_ROOT.parent / "neo-lean-router.md").read_bytes().strip() + b"\n\n"
+                # Re-running a current legacy project must remain byte-preserving.
+                # Neo's global entrypoint supplies its policy without implicit migration.
+                if destination.read_bytes() == expected.removeprefix(router_prefix):
+                    continue
+                compatibility_variants.add(expected)
+                compatibility_variants.update(
+                    item[len(router_prefix):] for item in tuple(compatibility_variants)
+                    if item.startswith(router_prefix)
                 )
                 if destination.read_bytes() in compatibility_variants:
                     planned.append((destination, expected))
