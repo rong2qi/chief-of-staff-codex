@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "goal_loop_version": "GOAL_LOOP_V1",
   "project_name": "{{PROJECT_NAME_JSON}}",
   "agent_os_mode": "required",
   "agent_os_manifest": ".agent-os/manifest.json",

@@ -619,11 +619,10 @@ class GapClosureTests(unittest.TestCase):
         skill = (root / "SKILL.md").read_text(encoding="utf-8")
         protocol = (root / "references" / "coordination-protocol.md").read_text(encoding="utf-8")
         reference = (root / "references" / "delivery-ledger.md").read_text(encoding="utf-8")
-        for text in (skill, protocol):
-            self.assertIn("cold start", text)
-            self.assertIn("authorized heartbeat", text)
-            self.assertIn("delivery-ledger.md", text)
-            self.assertIn("OBSERVATION_GAP", text)
+        self.assertIn("coordination-protocol.md", skill)
+        for phrase in ("cold start", "authorized heartbeat", "OBSERVATION_GAP"):
+            self.assertIn(phrase, protocol)
+        self.assertIn("delivery-ledger.md", protocol)
         self.assertIn("stable reviewer identity", reference)
         self.assertIn("temporary native transport", reference)
 

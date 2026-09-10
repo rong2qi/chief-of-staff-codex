@@ -5,8 +5,9 @@ State lives in `.chief-of-staff/` and remains portable across future control pla
 ## project.json
 
 - `schema_version`: currently `1`.
-- `chief_version`, `chief_schema_version`, `chief_source_commit`: pinned Chief release `2.0.0`, contract schema `2`, and full source commit SHA for new/synced projects. These are distinct from retained state-file `schema_version` values.
+- `chief_version`, `chief_schema_version`, `chief_source_commit`: pinned Chief release, contract schema `2`, and full source commit SHA for new/synced projects. These are distinct from retained state-file `schema_version` values.
 - `work_execution_version`: `WORK_EXECUTION_V1` for new or explicitly adopted projects; absence retains legacy execution behavior. Adoption is project-local and does not change preference/profile schemas.
+- `goal_loop_version`: `GOAL_LOOP_V1` for new or explicitly synced v3 projects. Its absence preserves v2 behavior; discovering a newer source checkout never adopts it implicitly.
 - `project_name`: initialized project name.
 - `primary_task_title`: generated as `Chief of <project_name>`, for example `Chief of 个人web`.
 - `pin_primary_task`: `false` for an ordinary Chief. It may be `true` only for a mandatory core role, an operator-approved optional Chief, or a grandmothered optional Chief pending value review. The matching evidence lives in `pin-state.json`.
@@ -99,6 +100,12 @@ This mutable file retains project classification and legacy product-discovery ev
 ### V1 work records
 
 `work_items` in `project-plan.json` records current work for `WORK_EXECUTION_V1`. A direct Chief work item can satisfy active-phase execution without a child registry entry. Records bind stable work identity, phase, actual work classification, sole writer and owned surfaces, discovery evidence, acceptance and review, cumulative finite budget and progress, and resource admission. See the [complete minimal record and accepted fields](work-execution.md#record-shape-and-minimal-queued-work-example); `work_history` retains admission attempts and their final-acceptance bindings. Do not synthesize alternate enum names from prose.
+
+A v3 current work item may add `reference_sources`, a list of fixed read-only
+inputs. Each item contains `repository`, a full 40-hex `revision`, `purpose`, and
+literal `access: read_only`. This is the only v3 persisted Goal Loop addition;
+delivery-host path, Git state, tool availability, and resource pressure remain
+fresh observations rather than copied state.
 
 The same underlying work retains its consumption and failure evidence across phases, candidates, owners, and renamed IDs. Adoption must preserve goal, task registry, approvals, historical discovery, ownership, and unknown extension fields. It does not create an approval or reset a stop. Both self and independent reviews need retained evidence; an independent reviewer must differ from the implementation writer.
 

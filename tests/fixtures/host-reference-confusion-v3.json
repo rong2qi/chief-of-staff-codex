@@ -1,0 +1,26 @@
+{
+  "schema": "CHIEF_V3_HOST_REFERENCE_REPLAY_V1",
+  "name": "重构预约v1.3 Host/Reference Confusion",
+  "delivery_host": "caller_selected_local_project",
+  "architecture_reference": {
+    "repository": "https://github.com/zodorganization/zod-reservation.git",
+    "revision": "8d1f9382033e70a35c9c08514caa298d6948d459",
+    "purpose": "architecture",
+    "access": "read_only"
+  },
+  "allowed_effects": {
+    "local_modify": ["src/reservation.py"],
+    "reference_read": ["architecture"]
+  },
+  "forbidden_effects": [
+    "visual_modify",
+    "commit",
+    "push",
+    "release",
+    "deploy",
+    "production"
+  ],
+  "protected_visual": "assets/current-visual.bin",
+  "criterion_id": "reservation-user-path",
+  "stop_after_acceptance": true
+}

@@ -82,7 +82,7 @@ def legacy_full_contract(target):
 def assert_thin_entry(case, target):
     entry = (target / "AGENTS.md").read_text()
     for phrase in ("Chief is the single source of generic behavior", "chief-lock.json",
-                   "SKILL.md", "references/work-execution.md", "never silently follow floating main"):
+                   "SKILL.md", "references/work-execution.md", "silently follow floating main"):
         case.assertIn(phrase, entry)
     return entry
 
@@ -249,6 +249,21 @@ def pass_product_gate(target, runtime_mode="pm_single_task_fallback"):
 
 
 class InitProjectTests(unittest.TestCase):
+    def test_source_version_and_fresh_project_declare_goal_loop_v1(self):
+        version = json.loads((ROOT / 'chief-version.json').read_text())
+        self.assertEqual(version['version'], '3.0.0')
+        self.assertEqual(version['schema_version'], 2)
+        self.assertEqual(version['work_execution_version'], 'WORK_EXECUTION_V1')
+        self.assertEqual(version['goal_loop_version'], 'GOAL_LOOP_V1')
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / 'project'
+            result = run(target)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                read_state(target, 'project.json')['goal_loop_version'],
+                'GOAL_LOOP_V1',
+            )
+
     def test_fresh_init_requires_and_verifies_agent_os_contract(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
@@ -339,7 +354,7 @@ class InitProjectTests(unittest.TestCase):
             agents_path = target / "AGENTS.md"
             agents_path.write_text(
                 agents_path.read_text().replace(
-                    "It cannot expand permission, redefine generic Chief authority, erase failures, or waive required validation.",
+                    "It may add stricter\nproject commands or constraints, but cannot expand permission, change generic\nauthority, erase failures, or waive validation.",
                     "It may expand permission and waive required validation.",
                     1,
                 )
@@ -578,7 +593,7 @@ class InitProjectTests(unittest.TestCase):
             self.assertIn("[features]\ngoals = true", (target / ".codex/config.toml").read_text())
             agents = (target / "AGENTS.md").read_text()
             assert_thin_entry(self, target)
-            policy = (ROOT / "SKILL.md").read_text()
+            policy = (ROOT / "references/chief-v2-compat.md").read_text()
             self.assertIn("Only when `american_english_coaching.enabled` is true", policy)
             self.assertIn("When `audio_playback.enabled` is also true", policy)
             self.assertNotIn("End every complete user-facing reply", agents)
@@ -765,7 +780,10 @@ class InitProjectTests(unittest.TestCase):
             self.assertEqual(set(discovery["lanes"]), {
                 "project_initiation", "requirements_analysis", "market_research", "architecture_feasibility"
             })
-            self.assertIn("Product classification and discovery gate", (target / "AGENTS.md").read_text())
+            self.assertIn(
+                "genuinely new product boundary",
+                (ROOT / "SKILL.md").read_text(),
+            )
             self.assertEqual(run(target, "--check").returncode, 0)
 
     def test_generated_contract_enforces_narrow_pin_inheritance_gate(self):
@@ -799,7 +817,8 @@ class InitProjectTests(unittest.TestCase):
             skill = (ROOT / "SKILL.md").read_text()
             readme = (ROOT / "README.md").read_text()
             governance = (ROOT / "references/pin-inheritance-governance.md").read_text()
-            for text in (skill, readme, governance):
+            self.assertIn("references/pin-inheritance-governance.md", skill)
+            for text in (readme, governance):
                 self.assertIn("MIGRATION_READY", text)
                 self.assertIn("list_threads", text)
                 self.assertIn("pinnedThreads", text)

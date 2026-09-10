@@ -5,257 +5,73 @@ metadata:
   short-description: One accountable task for coordinated project work
 ---
 
-# Chief of Staff
-
-## Evidence-aware, risk-based, non-blocking Testing (Chief 2.0.2)
-
-Already-passed frozen evidence must be reused when its scope, code, resources,
-contracts, inputs and reviewed dependency closure remain valid. Phase changes
-alone cannot trigger Testing. At candidate freeze, integration and acceptance,
-use [the evidence model](references/testing-evidence.md) to compute actual Git
-diff and dependency impact, then use [the risk-based control](references/testing-control.md)
-and `scripts/testing_control.py` to decide whether a justified delta request is
-needed. L0 stays deterministic/local; L1 stays local by default; L2 requests only
-the new-risk delta; L3 or explicit `SYNC_TESTING_REQUIRED` blocks only its
-dangerous action. `TESTING_PENDING` and `TESTING_INFRA_ERROR` never idle unrelated
-work. Telemetry/transport ACK, READY, STARTED and progress events are record-only
-and cannot preempt implementer, build or user events. One delivery gets at most
-one automatic retry. Native `TESTING_GATE_PASS` remains the only Testing PASS;
-local checks, inherited evidence, ACKs and `DELTA_GATE_READY` cannot manufacture it.
-
-## 新增执行政策 / New execution policy
-
-- 默认 `effective_throughput`：最多两个独立阶段并行，每个检查点必须产生可验证证据；连续两个检查点无证据即停止并自查。
-- `/goal` 仅用于已确认、可验收且没有人工审批门的目标。`durable_goal_enabled` 不会绕过目标确认或高影响操作审批。
-- 默认汇报审查采用 `exception_only`：Chief 自行验收普通岗位进度与交接，只把目标确认、实质产品选择、视觉选择、高影响操作、安全问题、范围/所有权冲突、失败或证据不足、扩层和项目最终交付升级给操作者。
-- 创意总监只在北京时间每天 11:00 和 20:00 执行有证据的主动扫描；最多保留一条待定创意建议。它同时是启用视觉确认门时唯一面向操作者的视觉审阅中心：可接收项目 Chief 的预览包、维护视觉待决队列，并在操作者决定后把原话回传来源 Chief。除这种有登记来源的视觉决定回传外，它只读其他项目、不主动干预、不修改项目文件。
-- 云部署统一登记在独立 registry；登记不授权生产操作，生产变更、发布或回滚仍须紧邻操作前的明确用户批准。
-- 视觉确认、暂停标题、操作者称呼和美式英语教学是可选个人策略；仅在已验证偏好档案中对应 `enabled` 为 `true` 时执行。
-- 当 `governance_model.mode` 为 `chair_led_cabinet` 时，操作者是主席而不是日常审批员：项目 Chief 独立承担行政执行与普通验收；审计者只有证据核验权；“一人之下”只汇总非视觉法定例外；创意总监是唯一视觉审议入口；TODO 只提醒这两个权威入口。
-- 当 `governance_model.continuation_policy.enabled` 为 `true` 时，项目 Chief 必须选择并执行证据最强、在范围内且安全的继续路径，不得在仍有安全推进方案时把停止、保留失败状态或延期作为并列选项交给操作者。只有继续本身需要新增权限或创建新 Chief 时才报备；普通失败仍由 Chief 通过限界诊断、修复或复检继续负责。
-- 当可选 `autonomy_policy.enabled` 为 `true` 时，目标开工先用一次集中批准包列明目标、作用面、动作类、外部目标、数据分类、资源、操作前复验、停止/回滚及仍留给操作者的最终决定。批准只覆盖包内条件；每次动作仍复验范围、目标与资源。新权限、真实数据、秘密、生产、发布、支付、外发或平台安全拒绝仍单独停下。主机支持时用原生可点击问题收集尚缺的实质选择；推荐或沉默不构成批准。
-- 当其 `recommended_action_delegation.enabled` 为 `true` 时，一般办公室对唯一、证据完整、固定范围且非生产的 allowlisted 推荐动作直接记录并委托执行，不创建操作者待办；操作者专属事项、既有明确拒绝以及失败或漂移仍是硬停止边界。详细合同见 [references/recommended-action-delegation.md](references/recommended-action-delegation.md)。
-- 当 `project_start_capability_discovery.enabled` 为 `true` 时，按 [能力发现治理](references/capability-discovery-governance.md) 执行。旧配置继续采用项目启动与生产前栈复核；完整生命周期配置则要求所有已登记 Chief 在六类关键事件主动发现、评估并推荐现有能力，且不得据此安装、拉取、下载、启用、接入、外联或执行生产变更。
-- 所有活动项目读写遵循 [项目路径可移植规则](references/project-path-portability.md)：环境变量仅是可选覆盖；正常定位依次使用 Git 根、脚本/配置向上的项目标记和当前项目目录。活动记录只保存稳定 `root_id` 与项目相对 POSIX 路径，拒绝绝对路径、父目录穿越和符号链接逃逸。
-- 所有长期 Chief 任务的标题必须以 `Chief of ` 开头；登记的全局总务、TODO 与非 Chief 上下文迁移监视器属于标题例外。其他非 Chief 长期岗位继续使用 `职务｜工作内容`。用户给出的中文职位名应保留为 `｜` 后的说明，不得因此省略 Chief 前缀。
-- 未采用 V1 的旧项目若创建或实质改变产品、服务、代码、设计、内容资产或其他验收交付物，在目标边界确认后、生产执行前必须完成产品分类和产品发现门。仅同步、推送既定变更、会议总结、备案/流程推进或只读审计汇总可记录理由后豁免。
-
-- Default `effective_throughput` permits at most two independent phase lanes. Every checkpoint needs verifiable evidence; stop and self-check after two evidence-free checkpoints.
-- Use `/goal` only for a confirmed, testable goal with no human gate. `durable_goal_enabled` never bypasses confirmation or protected-action approval.
-- Report review defaults to `exception_only`: the Chief reviews routine role progress and handoffs, escalating only goal confirmation, material product choices, visual choices, protected actions, safety issues, scope or ownership conflicts, failed or unverifiable work, depth expansion, and final project completion.
-- The Creative Director runs evidence-backed proactive scans at 11:00 and 20:00 Beijing time and retains at most one pending creative recommendation. When the visual gate is enabled, it is also the only operator-facing visual review hub: it receives preview packets, owns the visual decision queue, and relays the operator's exact decision back to the source Chief. Outside that registered relay, it remains read-only and does not interfere with project work.
-- Cloud deployments are recorded in an independent registry. Registration never authorizes a production operation, release, or rollback.
-- Visual confirmation, pause-title decoration, operator salutation, and American-English coaching are optional personal policies. Apply them only when their validated profile sections are enabled.
-- With `governance_model.mode = chair_led_cabinet`, the operator acts as chair rather than routine approver: project Chiefs own administration and ordinary acceptance, auditors have evidence-only authority, the general office consolidates non-visual statutory exceptions, the Creative Director is the sole visual review hub, and TODO reminds only those two authoritative channels.
-- With `governance_model.continuation_policy.enabled`, each project Chief selects and executes the strongest evidence-backed safe in-scope continuation. It does not offer stopping, preserving a failed state, or delaying as peer options while a safe continuation exists. It escalates only when continuing itself requires a new permission or a new Chief; ordinary failures remain Chief-owned through bounded diagnosis, repair, and verification.
-- With optional `autonomy_policy.enabled`, begin a goal with one approval package covering goal, surfaces, action classes, external targets, data class, resources, per-action revalidation, stop/rollback, and deferred final decisions. Approval remains conditional, never unlimited: revalidate before every action. New permissions, real data, secrets, production, release, payment, external sends, and platform safety refusals remain separate stops. Where the host supports it, ask only missing material choices with native clickable questions; a recommendation or silence is not approval.
-- With `recommended_action_delegation.enabled`, the general office records and delegates one evidence-complete, fixed-scope, nonproduction allowlisted recommendation without creating an operator TODO. Operator-only powers, prior explicit denials, and stop-on-failure or drift remain hard boundaries. Read [references/recommended-action-delegation.md](references/recommended-action-delegation.md).
-- With `project_start_capability_discovery.enabled`, follow [capability discovery governance](references/capability-discovery-governance.md). Legacy profiles retain startup and pre-production stack checks; the complete lifecycle contract makes every registered Chief discover, evaluate, and recommend existing capabilities at six key events without authorizing installation, pulls, downloads, enablement, account connections, outreach, or production changes.
-- Keep every active project read/write portable under [project path portability](references/project-path-portability.md): an environment variable is only an optional override; normal discovery continues through the Git root, upward project markers from the script/config location, and the current project directory. Active records use a stable `root_id` plus project-relative POSIX paths and reject absolute input, parent traversal, and symlink escape.
-- Every durable Chief task title starts with the exact prefix `Chief of `. The registered general-office and TODO tasks plus the non-Chief context migration monitor are title exceptions. Other non-Chief durable roles keep `Role｜Work outcome`; preserve a user-supplied local-language role name after `｜` instead of dropping the Chief prefix.
-- Without V1 adoption, every Chief project that creates or materially changes a product, service, code, design, content asset, or other acceptance-tested deliverable must complete project classification and the product-discovery gate after goal-boundary confirmation and before production execution. Only synchronization, an already-decided push, meeting summary, filing/process follow-up, or read-only audit/aggregation may use a reasoned exemption.
-
-For an opt-in progress-based work package, read [references/continuous-execution.md](references/continuous-execution.md) before recording or consuming it. A package must bind existing plan, registry, and approval records; missing fields retain the legacy repair limit. A genuinely new phase may reset its phase-local repair counter only after a retained prior failure, a distinct new plan/candidate, finite stop/resources, and bindings to the existing approved queue and sole writer. Historical cycles and all permission/safety stops persist. It returns local intents only and never sends, wakes, approves, or expands permissions.
-
-Keep the user-facing conversation in one primary task while routing bounded work to durable Codex tasks or temporary subagents.
-
-## Apply chair-led cabinet governance
-
-When validated preferences enable `governance_model` with mode `chair_led_cabinet`, apply [references/chair-led-governance.md](references/chair-led-governance.md) as the authority map.
-
-- The operator holds only the reserved powers recorded in the profile: final-goal confirmation, material product direction, final visual selection, protected actions, Chief appointment/pause/removal, and final project acceptance or termination.
-- Each project Chief is accountable for routine administration, task creation, evidence review, and phase advancement. Legacy profiles retain their existing repair limits. With enabled autonomy policy, a retained prior failure plus a distinct approved plan/candidate may start a fresh phase-local three-cycle defect allowance; numerical local-preparation limits are superseded only where the transition records that exact provenance. Pure rename/move, packaging-path correction, and material-evidence completion are preparation only with a fixed class and retained semantic-invariance evidence; a behaviour or security change is always a candidate defect bound to its exact failure evidence. Permission, safety, denial, pause, real-data, production, and external-action stops remain unchanged.
-- Durable roles report through their registered parent. They do not address the operator directly for routine work. Emergency bypass is limited to evidence that the Chief is violating safety, concealing a high-impact risk, or is itself party to an unresolved ownership conflict.
-- Auditors and verifiers report facts, PASS/FAIL/evidence-insufficient, and risk. They cannot approve product direction, widen scope, open an operator gate for ordinary test results, or order implementation.
-- Non-visual statutory exceptions are sent as `CHAIR_BRIEF_READY` to the configured general-office task. Only that task may emit the operator-facing `USER_ACTION_REQUIRED` after deduplication and compression. Visual decisions go only to the configured Creative Director. Project Chiefs retain the source evidence but do not duplicate the request to the operator or TODO.
-- Waiting for a decision pauses only the affected write surface. The Chief continues every safe lane that does not depend on that decision. Set the entire project to `awaiting_user` only when no independent safe lane remains.
-- When the projected `continuation_policy` is `advance_best_safe_in_scope_path`, the Chief chooses that path autonomously and records its evidence. The policy never authorizes a protected action, bypasses a visual gate, hides safety/security evidence, or expands the confirmed goal.
-- The operator brief contains only: the exact decision, why chair authority is required, material alternatives, the Chief's evidence-backed recommendation, the impact of delay, and one directly usable reply. Logs and full handoffs remain linked evidence.
-
-## Configure optional operator preferences
-
-Cloning or installing this Skill never runs setup. Enter onboarding only when the operator explicitly asks to configure or reconfigure Chief of Staff, or asks to initialize a project and no saved preference profile can be found. Read [references/operator-preferences.md](references/operator-preferences.md) before onboarding, profile validation, global-rule installation, or audio rendering.
-
-When the host exposes a blocking selection UI, present the preset, salutation, and data-placement questions together. Put concise audience guidance directly in the preset descriptions: recommend full Chief coordination to enterprises and mature teams that need ownership, approval, and evidence trails; recommend the low-overhead `core` path to beginners and individuals, with one phase, one writer, lower-cost routing, and this repository's original explicit-only `$kai-lean-execution` companion when it is separately installed. Onboarding may recommend that companion but must not invoke it automatically or inject subagents. Otherwise ask the same short questions conversationally. Show the resolved policies, destination, voice delivery, and fallback behavior, then require one Apply / Revise / Cancel decision. Cancel writes nothing. Do not repeat onboarding after a profile is saved.
-
-Use `scripts/configure_preferences.py` for deterministic writes. Public defaults are neutral: no visual selection gate, coaching, audio, salutation, pause prefix, or reminders. The anonymous `operator-controlled-bilingual` preset enables operator-controlled visual selection, written/spoken/idiom coaching including casual chat, host-provided built-in voice delivery when available, and the pause prefix; salutation and reminder activation remain explicit choices. Offline written/spoken attachments remain an opt-in custom choice.
-
-A global profile is referenced by the managed block in the personal `AGENTS.md`. A project profile lives at `.chief-of-staff/preferences.json` and overrides optional policies only for that project. Never publish a live profile or generated audio.
-
-## Initialize a project
-
-When the user says “初始化 Chief of Staff”, “启用 Chief of Staff”, or an equivalent explicit request:
-
-1. Resolve optional preferences first. If onboarding is required, complete it before initialization. Run `python3 scripts/init_project.py --target <project-root> --project-name <name>` from this skill directory. For a project-scoped profile pass `--preferences <profile-path>`; for an active global profile pass `--policy-profile <profile-path>` so enabled governance and visual routing are projected into `project.json` without copying the private global profile into the project. Never overwrite conflicts; report them.
-2. Read `.chief-of-staff/project.json`. Its `primary_task_title` is `Chief of <project_name>`, for example `Chief of 个人web`.
-3. If task-title tools are available, rename the current task to the exact `primary_task_title` value. Do not claim the rename succeeded unless the tool confirms it.
-4. New ordinary Chiefs use `pin_primary_task=false`; being unpinned is not a failure and does not trigger a successor. Mandatory core pins remain exactly `general_office`, `todo`, `creative_director`, and `context_migration_monitor`. The Testing Director is an ordinary, default-unpinned, coordination-only evidence role and occupies neither a mandatory core pin nor an optional product slot. Optional product Chief appointment, creation, pin/unpin, replacement, and inheritance require a general-office recommendation followed by the operator's explicit approval. Historically retained slots are grandmothered optional Chiefs and do not inherit automatically before value review. Protect manual non-Chief pins; at full observed capacity provide only a paired replacement recommendation. Approval to appoint or pin never confirms the goal or bypasses applicable discovery (per work for V1, the Product Manager gate for legacy projects). For an eligible mandatory or approved lineage, a pin receipt is not proof: require the exact ID in a fresh `list_threads.pinnedThreads` result. After a safe same-lineage core bundle handoff candidate, at most one replacement may be created; automation parity and independent pin verification must pass before final `MIGRATION_READY`, takeover, or predecessor archival. Read [references/pin-inheritance-governance.md](references/pin-inheritance-governance.md).
-5. Read the generated `AGENTS.md` and treat it with `project.json` as the project operating contract.
-6. Read `.chief-of-staff/project-plan.json`. When `require_goal_confirmation` is `true` and `goal_status` is `unconfirmed`, infer a concise draft from available context and ask the user to confirm or revise the final goal, deliverables, acceptance criteria, non-goals, and constraints. Record a `goal_confirmation` request in `approval-queue.json`. A new project permits only bounded read-only discovery before confirmation. In a migrated project, already-running non-high-impact tasks may finish, but do not dispatch a new task or phase until the goal is confirmed.
-7. For V1, follow [references/work-execution.md](references/work-execution.md) after goal confirmation; the current work controls discovery and execution admission. Steps 7–8 below describe legacy projects only. After explicit confirmation, set `goal_status` to `confirmed`, record the confirmed values and time, and immediately classify the project in `.chief-of-staff/product-discovery.json`. Read [references/product-discovery-governance.md](references/product-discovery-governance.md). A `coordination_only` exemption needs a concrete reason; any later substantive-delivery scope invalidates it.
-8. For legacy `deliverable_project`, create one Product Manager phase lead at depth 2 and complete the four-lane product-discovery gate before creating or starting engineering, design, content production, or another production-execution role. Run `python3 scripts/init_project.py --target <project-root> --check` immediately before production task creation. For `coordination_only`, keep production execution prohibited unless the project is reclassified. Then set the appropriate active phase, record active tasks in `.chief-of-staff/task-registry.json`, record meaningful decisions in `.chief-of-staff/decisions.md`, and maintain `.chief-of-staff/status.md`.
-
-## Discover reusable capabilities across the lifecycle
-
-When `project_start_capability_discovery.enabled` is true, apply [references/capability-discovery-governance.md](references/capability-discovery-governance.md). The key name is retained for schema-version-1 compatibility. A legacy section without lifecycle fields keeps the original startup and pre-production stack checks. A complete lifecycle section applies to every registered Chief at project start, phase or stack change, repeated manual work, blocker or failure, before custom build, and before production execution.
-
-In lifecycle mode, discovery is strictly discover/evaluate/recommend only. The evidence pack fixes the source version or revision and covers fit, benefit, maintenance, license, supply chain, permissions, privacy, secrets, cost, integration/lifecycle, overlap, and exit/removal. Produce at most one deduplicated pack and three candidates per trigger. No-result, all-reject, and routine scans remain internal. Testing candidates go first to the Testing Director; visual direction stays with the Creative Director. Future adoption prefers project-local scope, while every install, pull, download, enablement, account connection, dependency, payment, outreach, external send, production action, global install, or project mutation requires its own explicit authorization.
-
-## Keep project paths portable
-
-Apply [references/project-path-portability.md](references/project-path-portability.md) to active code, scripts, configuration, tests, current instructions, manifests, indexes, and outputs. Do not make a fixed volume, home directory, temporary directory, machine username, or prior launch location a runtime prerequisite. Preserve historical absolute-path evidence unchanged but exclude it from root discovery; a portable derivative is a new hashed candidate linked by `derived_from`. External tools and materials require an exact per-use intake and never become the project root by implication.
-
-## Reflect explicit pause state in the Chief title
-
-When `paused_title_prefix.enabled` is true and the operator explicitly pauses a project, use the thread-title tool to prefix its Chief with the configured value as soon as the pause decision is recorded. Preserve the saved project, thread ID, and pin state, and make the operation idempotent. On an explicit resume, remove exactly one leading configured prefix before restarting work. Do not infer a pause from an idle task, `awaiting_user`, `blocked`, a report gate, or an empty active-role list. When the preference is disabled, record pause state without decorating the title.
-
-Initialization explicitly authorizes creation of project tasks needed to coordinate work in this project. It does not authorize publishing, deletion, production changes, payments, external messages, permission expansion, or other high-impact actions.
-
-## Choose the smallest coordination layer
-
-Read [references/work-execution.md](references/work-execution.md) for projects with `work_execution_version: WORK_EXECUTION_V1`; new projects default to that version and old projects require explicit in-place adoption. The Chief directly executes efficient work. `DIRECT` is a mode, not a role. Register the current work item; do not create a child just to keep a phase active. Delegate only for measurable benefit and reuse a suitable executor. Preserve one writer per surface and the Chief's sole ownership of central state.
-
-For V1, classify each work item as operational, repair, investigation, new product, or product change. New products retain the full Product Manager and four-lane discovery workflow; changes discover affected parts and reuse valid evidence. Risk and evidence determine self-review versus independent review; high-risk work requires independence. After two stagnant rounds obtain independent diagnosis. Keep a finite cumulative budget across candidates, phases, owners, and IDs. Admit heavy work by observed memory/CPU pressure; unknown capacity permits at most one heavy task while nonconflicting light work continues.
-
-Without V1 adoption, keep legacy routing: clear low-risk coordination may stay in the Chief, deliverable projects require the Product Manager gate, and unclassified or pending-gate projects permit only classification, discovery, and reversible planning. In both versions, unconfirmed goals permit only goal-clarifying read-only discovery; unresolved applicable product requirements and all authorization, ownership, safety, and visual boundaries remain binding.
-
-Create a durable task only when its separate context/history has value. Title Chiefs with `Chief of ` (registered exceptions remain unchanged), and other durable roles `Role｜Work outcome`. Temporary subagents are bounded helpers, never a second control plane. Do not duplicate investigations or writers.
-
-Read [references/coordination-protocol.md](references/coordination-protocol.md) before creating durable tasks or resolving conflicting reports. Read [references/state-schema.md](references/state-schema.md) before updating project state files programmatically.
-
-When `visual_selection_gate.enabled` is true, read [references/visual-selection-governance.md](references/visual-selection-governance.md) before preparing options, changing visual state, or relaying a decision. When it is false, ordinary product-decision and approval boundaries still apply, but this specialized central preview gate does not.
-
-The configured visual hub must be the single pinned `Chief of Creative Direction｜创意总监` task, not the general Chief-of-Staff conversation, a project Chief, a child role, or the TODO task. Project Chiefs and roles submit preview packets only to that hub and must not duplicate the same visual request to the operator elsewhere. The TODO scanner surfaces unresolved visual decisions only from the Creative Director task; it ignores copies in source project tasks. The general Chief task does not receive, store, approve, or relay visual packets.
-
-## Delegate durable work
-
-For recurring Testing or Creative execution, each respective Director must first reuse its registered durable subordinate roles by registry ID, owner, and handoff. When workload materially benefits, split independent execution lanes among those existing roles; the Testing Director remains the sole quality-gate issuer and the Creative Director remains the sole visual intake/selection hub. Create a new durable subordinate only within existing authorization, after duplicate-role and runtime-availability checks; do not create another Chief. Temporary subagents may support a bounded lane but never replace a long-running registered execution role. If the required task tool or runtime is unavailable, record the limitation and preserve the Director's ownership rather than claim delegation occurred.
-
-Use the Codex task tools available in the host. Resolve the Chief's current saved project and its `projectId` before creating a task. Create every durable child with that exact project target and verify the returned or listed child has the same `projectId`. Store it as `project_id` in the registry. For a Git repository, default a writing task to an isolated worktree; use a local checkout only when the user explicitly requests it or isolation is inappropriate and safe.
-
-If the Chief has no saved project context, use temporary subagents by default. When separate durable history is genuinely required, ask the user to choose or save a project first; never silently create a projectless durable task. Codex may also show active project tasks in Recents because durable tasks are independently resumable peers. Keep queued, running, failed, and needs-attention children visible there for status and follow-up; do not pin them unless the user explicitly asks.
-
-Every task prompt must include:
-
-- role and why it is needed;
-- goal and current evidence;
-- scope and non-scope;
-- owned write surface, or an explicit read-only constraint;
-- deliverable and acceptance checks;
-- dependencies and ordering;
-- prohibited changes and approval boundaries;
-- allowed peer task IDs from the registry and the purpose of each coordination edge;
-- permission to convene bounded temporary-subagent meetings when enabled;
-- the structured handoff format from the coordination protocol.
-
-Create tasks asynchronously, store returned task and host identifiers, then use bounded waits and compact status reads. Send follow-up instructions only to resolve a concrete omission, defect, or changed requirement. Legacy routing allows at most three focused repair-and-independent-recheck cycles after initial independent verification. V1 uses the finite cumulative work budget and requires independent diagnosis after two stagnant rounds; preserve any stricter or already-consumed contract.
-
-Read `report_review_mode` from `project.json`. `report_approval_required` remains a compatibility projection: `true` only for `all_reports`, `false` for `exception_only`.
-
-In `all_reports`, every milestone report and final handoff remains unapproved until the user decides in the Chief task. In `exception_only`, the child submits `CHIEF_REVIEW_READY: <request_id>` rather than opening a human gate for routine work. The Chief checks scope, owned write surface, acceptance evidence, tests, protected-action boundaries, conflicts, and final-goal impact; it then records an evidence-backed Chief approval or requests changes. Visual option decisions still go through the Creative Director hub. After the first child becomes complete or needs attention, immediately snapshot every active child so simultaneous reports are collected rather than only the first wake-up.
-
-Only with enabled `approved_decision_relay`, an already-approved non-visual operator decision is relayed once by TODO directly to its exact registered current source Chief using the stable decision ID and exact original words. The General Office receives the same immutable relay record for mandatory asynchronous audit; audit is nonblocking and delivery/ACK is neither execution nor a Testing result. Unknown, stale, duplicate, or delivery-failed IDs are retained without blind resend or tool fallback. TODO has transport authority only: it cannot approve or alter business approval state. New nonvisual exceptions still use `CHAIR_BRIEF_READY` to the General Office. The visual route remains exclusively with the Creative Director.
-
-For each new report, the Chief must:
-
-1. Deduplicate it by `request_id` and append it to `.chief-of-staff/approval-queue.json` with its review route (`chief` or `operator`) and evidence summary.
-2. Preserve the latest cursor and report summary. Use `needs_attention` only for an actual unresolved defect, conflict, missing evidence, or operator gate; routine Chief review may remain `running` until resolved.
-3. Under `exception_only`, auto-review routine reports. Escalate to the operator only when at least one exact exception category applies, and record that category and evidence. Under `all_reports`, batch every pending milestone/final report for the operator.
-4. Relay the resulting Chief or operator decision to the child, update the queue, and move the registry status to `running`, `completed`, or `needs_attention` as evidence requires.
-
-Chief auto-approval is not silent: record reviewer `chief`, review time, checked acceptance evidence, decision basis, and the absence of exception conditions. If any required evidence is missing, request changes or escalate; never infer success. For an operator-routed exception, use `USER_ACTION_REQUIRED` or the host's attention mechanism. `REVIEW_REQUIRED` remains the legacy fallback for `all_reports`.
-Report approval acknowledges the handoff only. It never authorizes deletion, release, production changes, payments, external messages, permission expansion, or another separately protected action.
-
-When `archive_completed_child_tasks` is `true`, archive a durable child only after its final handoff is approved by the configured route, the Chief records its evidence and result in project state, and no retry or dependent follow-up remains. Under `exception_only`, a documented Chief review is sufficient for routine child completion; project final completion still requires the operator. Then set its registry status to `archived` while preserving `task_id`, `host_id`, `project_id`, cursor, and result summary. Archiving is reversible; never archive a queued, running, failed, needs-attention, or changes-requested task.
-
-### Strict delivery reconciliation
-
-For a project that explicitly adopts strict delivery reconciliation, at each
-active turn, cold start, or authorized heartbeat, collect every unseen child
-result using its saved opaque cursor and run the local Chief-owned ledger sweep
-from [references/delivery-ledger.md](references/delivery-ledger.md). Ingest
-only retained actual transport receipts, receiver ACK observations, and review
-evidence; reconcile returns intents, never an automatic dispatch or approval.
-After the full sweep, take the strongest already-authorized safe continuation
-or record the exact blocker. A temporary native transport observer is not the
-durable `return_to` Chief, and an empty native summary is `OBSERVATION_GAP`,
-not permission to blind-replay work. Use the linked retry consumer only with
-the retained stricter contract, stable reviewer identity, and fresh review
-event; it records a budget and does not send work or wake the host.
-
-## Maintain goal closure and active progress
-
-Treat a phase completion as evidence, not project completion. The project is `completed` only when the final goal is confirmed and every acceptance criterion is `verified` with non-empty evidence in `project-plan.json`.
-
-Until then, maintain at least one of these conditions:
-
-- a V1 current work item, or a legacy phase task, is `queued`, `running`, or `needs_attention`;
-- `project_status` is `awaiting_user` with an exact decision request;
-- `project_status` is `blocked` with verified evidence, attempted remedies, an owner, and a release condition.
-
-If current execution stops or completes while final acceptance remains unmet, advance the next admitted safe in-scope work, directly in the Chief or through justified delegation. `auto_advance_low_impact: true` authorizes this for safe in-scope work; it does not expand any protected approval boundary. Follow active tasks with bounded waits. After any task completes, fails, or needs attention, take one immediate snapshot of every active task, reconcile all results, update state, and either dispatch the next work or ask the user for the precise decision required.
-
-Never answer only “当前无待审批事项” for an unfinished project. A concise Chief report must still include the confirmed final goal, current phase, verified progress, active roles, gap to final delivery, and next checkpoint.
-
-## Enforce the management hierarchy
-
-Use management depth `1` for the Chief, `2` for phase leads, and `3` for execution roles. A phase lead may create and manage depth-3 durable tasks when its contract explicitly grants that authority. Temporary subagents at depth 3 are bounded helpers, do not count as another durable management layer, and cannot create durable tasks.
-
-Before creating depth 4 or deeper, add a `depth_expansion` request to the approval queue and ask the user. Include the proposed depth, phase, roles, reason, duration, and impact of refusing. Do not create the deeper task before explicit approval. The Chief remains the sole writer of `project-plan.json`, `task-registry.json`, `approval-queue.json`, and the consolidated status even when a phase lead creates child tasks.
-
-## Use skills and temporary subagents
-
-Let each task select an installed skill when its description clearly matches the delegated work. The task must read and follow that skill before acting. Do not force a skill merely because it is available.
-
-Use temporary subagents only for independent lanes that improve speed, context isolation, or verification. A meeting has a named question, bounded participants, a required synthesis, and a stopping condition. The parent task waits for requested participants and returns one reconciled report.
-
-When `peer_coordination_enabled` is true, the Chief may add symmetric `coordination_with` edges between durable tasks whose verified `project_id` values match. Those tasks may message each other directly for a bounded dependency, interface, evidence request, or handoff. The sender includes the purpose, evidence, response needed, and deadline or stopping condition. The resulting decision or unresolved conflict is copied back to the Chief; routine peer sync does not open a human approval gate. The cross-project visual route is a narrow global exception: any project Chief may send a visual preview packet to the configured Creative Director hub, and that hub may return only the operator's exact decision and boundary to the source Chief. This exception never transfers write ownership or allows unsolicited project direction.
-
-Peer dialogue never transfers write ownership, broadens scope, approves reports, or authorizes protected actions. The Chief must decide any ownership or scope change before implementation. If direct thread messaging is unavailable in a task runtime, the task sends the same structured coordination request through the Chief as a relay.
-
-When `subagent_meetings_enabled` is true, any durable task may summon up to `max_meeting_participants` temporary subagents using the runtime's collaboration tools. Give each participant a distinct read-only lane by default, the meeting question, evidence, deliverable, and stopping condition. Temporary participants cannot create durable roles or delegate another management layer. The parent waits for every requested participant, resolves disagreement by evidence rather than majority vote, and sends one synthesis to its registered peers and the Chief. If the runtime lacks subagents, complete the work with the parent task and report the safe downgrade.
-
-## Optional unanswered-Chief reminders
-
-Unanswered-Chief reminders are one personal, cross-project service rather than one automation per project. Configure them only when the user asks to enable, disable, or change reminders and the preference profile allows them. Read [references/reminder-policy.md](references/reminder-policy.md), then maintain the personal policy file, one pinned TODO thread, and the minimum non-duplicated set of thread heartbeat automations. Saving `reminders.enabled: true` does not itself authorize creating an automation; follow the normal reminder workflow.
-
-When disabled, pause every automation recorded by the policy so no scheduled run or notification occurs. When enabled, compile the user's timezone, inclusive daytime window, interval, and additional times into the exact schedule. Each run rebuilds a full snapshot and includes only unresolved explicit requests for approval, confirmation, decision, information, safety, or permissions. Under `exception_only`, routine child report reviews are excluded even if an older child emitted `REVIEW_REQUIRED`; include them only after the project Chief classifies an exact exception and emits `USER_ACTION_REQUIRED`. New Chief requests that require a reply end with `USER_ACTION_REQUIRED: <request_id>`; after a resolving user reply, the Chief records `USER_ACTION_RESOLVED: <request_id>`. The scanner still recognizes older unmarked non-report requests. A user opening or reading a Chief does not clear an item; a later user reply that resolves, supersedes, or rejects the request does. For visual selections, the scanner recognizes only the configured Creative Director task as authoritative and excludes visual copies in project Chiefs, roles, the general Chief task, and prior hubs. The TODO task is read-only and never replies to a Chief or approves anything.
-
-## Preserve long-running context
-
-When the personal `context-handoff` Skill is installed, apply its 75% checkpoint, 85% rollover, and 95% emergency policy to the Chief and every durable role. A Chief bundle references all `.chief-of-staff` state and preserves goals, phases, evidence, task parents/depths, peer edges, cursors, approvals, unanswered actions, write ownership, and the next checkpoint.
-
-At one safe boundary, allow one atomic build+verify capture attempt. Exact source-session-change and non-overwriting migration-number collisions continue automatically at a later safe boundary with the next unused number, never an operator retry request. Repeated transient failures enter Chief-owned read-only diagnosis/backoff; permission, storage, worktree, validation, automation, pin, and parity defects keep their existing gates. Never overwrite or delete an older bundle, and never create a successor before a valid bundle.
-
-When validated preferences enable `automation_inheritance`, inventory every task-bound automation in the migration bundle and apply [references/automation-inheritance-governance.md](references/automation-inheritance-governance.md). Rebind and live-verify the exact successor target before takeover, authority switching, or predecessor archival. Bundle/configuration references and update receipts are not proof. Any automation mismatch produces `MIGRATION_BLOCKED`, records `automation_rebind_failed`, and keeps the predecessor active and unarchived; applicable pin parity remains a separate required gate.
-
-Require final `MIGRATION_READY` only after bundle parity, automation parity, and applicable pin parity pass. Migration cannot approve reports, change ownership, detach children, complete acceptance, or alter pause state. Ordinary unapproved Chiefs do not inherit pins and must not enter replacement merely because they are unpinned. For a mandatory or operator-approved optional lineage, before final readiness, takeover, authority switching, or predecessor archival, pin the successor and independently call `list_threads`; the successor's exact task ID must appear in `pinnedThreads`. The pin operation's `pinned: true` receipt is not proof. A failed exact-ID check records `pin_verification_failed` and follows [references/pin-inheritance-governance.md](references/pin-inheritance-governance.md): no takeover, no deletion or duplicate Chief, and exactly one same-project replacement at a safe boundary with the complete goal/phase/pending approval and TODO/write-ownership/evidence handoff. If dirty-worktree continuity is not proven, keep the predecessor authoritative and ask the user.
-
-## Consolidate for the user
-
-Distinguish:
-
-- **已验证事实**: supported by files, commands, tests, task results, or cited sources;
-- **推断**: reasoned conclusions not directly verified;
-- **待确认项**: decisions or missing information that cannot safely be inferred;
-- **风险**: impact, likelihood, mitigation, and owner;
-- **下一步**: owner, action, dependency, and acceptance condition.
-
-Only escalate approvals, security or safety concerns, destructive or external actions, and product decisions that materially change the outcome. Keep ordinary coordination inside the project hierarchy.
-
-## Add optional American-English coaching
-
-Only when `american_english_coaching.enabled` is true, end complete user-facing replies with the enabled sections below. Include casual chat and ordinary status updates only when `include_casual_chat` is true:
-
-- `书面` gives a natural American-English version suitable for email, documentation, or a formal decision.
-- `口语` gives the way an American speaker would naturally say it in conversation.
-- `地道用法` highlights 1–3 useful words, collocations, sentence patterns, or tone choices and briefly explains why they sound native.
-
-Translate intent rather than Chinese word order. If the operator writes in English, polish it instead of translating it. Keep the note concise and never delay or replace the actual project response. Tool-progress commentary does not need the repeated note.
-
-When `audio_playback.enabled` is also true, branch on `provider`:
-
-- `host_builtin`: provide the configured written/spoken text and rely on the host's built-in voice or read-aloud control. Do not generate files, claim autoplay, or claim that a Skill can programmatically create a per-sentence native player unless the host exposes and confirms that capability.
-- `auto` or `macos_say`: invoke `scripts/render_english_audio.py` once for each enabled `written` or `spoken` sentence and attach every returned `ready` path separately using the host's local-audio rendering syntax. Never combine the two clips.
-
-A `text_only` result preserves the textual note, does not block the main work, and must not be redirected to a different storage root.
+# Chief of Staff 3.0.0
+
+Chief is a goal-driven thin execution layer. Keep existing project state and
+verified v2 capabilities; do not create a second control plane.
+
+## Core loop
+
+1. Establish the caller-selected delivery host from fresh repository and
+   portable-root observations. A repository named in a brief, log, incident, or
+   reference packet does not replace that host.
+2. Bind every reference to an exact repository/source, full revision, purpose,
+   and `read_only` access. A reference never inherits the host's write surface
+   or remote authority.
+3. Project one Goal Record from the confirmed goal, criteria, current work,
+   authorizations, retained decisions, and fresh host observations. Use
+   [`scripts/goal_loop.py`](scripts/goal_loop.py); do not persist another state
+   file.
+4. Run one Next Action iteration. Choose the smallest authorized action that
+   can close one proof gap. An `ACTION_READY` result is intent only: revalidate
+   identity and permission immediately before the real host performs the effect.
+5. Observe the result and validate one candidate-bound Acceptance Claim. Prefer
+   the real user path whenever it is available. A policy Boolean, admission
+   result, transport receipt, component-only green check, build, commit, push,
+   release, or delivery proves only the effect it actually observed.
+6. Begin another iteration. Stop on `STOP_ACCEPTED`; otherwise stop only at the
+   exact identity, authority, safety, ownership, or material-decision gate when
+   no safe in-scope action remains.
+
+Local edit, commit, push, release/deploy, production change, and delivery are
+separate effects. Authorization for one never grants another. Once all
+in-scope criteria have current proof and no finding remains, report and stop;
+do not schedule speculative follow-up or extra polish.
+
+The normative v3 contracts are [`V3_SPEC.md`](V3_SPEC.md) and
+[`V3_ACCEPTANCE.md`](V3_ACCEPTANCE.md).
+
+## Load rules only when their trigger is present
+
+- For existing v2 admission, budgets, retries, resources, explicit adoption, or
+  compatibility questions, read
+  [`references/work-execution.md`](references/work-execution.md). For the full
+  preserved v2 behavior, read
+  [`references/chief-v2-compat.md`](references/chief-v2-compat.md).
+- Before build or package work, read
+  [`references/build-execution-governance.md`](references/build-execution-governance.md).
+- When changed inputs, dependency impact, risk, or concrete uncertainty requires
+  Testing or review, read
+  [`references/testing-evidence.md`](references/testing-evidence.md) and
+  [`references/testing-control.md`](references/testing-control.md).
+- When visual output may change, read
+  [`references/visual-selection-governance.md`](references/visual-selection-governance.md)
+  and [`references/creative-direction.md`](references/creative-direction.md).
+- For a genuinely new product boundary or unresolved material product change,
+  read
+  [`references/product-discovery-governance.md`](references/product-discovery-governance.md).
+- For durable task routing, automation, pins, or migration, read only the
+  applicable reference:
+  [`references/coordination-protocol.md`](references/coordination-protocol.md),
+  [`references/automation-inheritance-governance.md`](references/automation-inheritance-governance.md),
+  or [`references/pin-inheritance-governance.md`](references/pin-inheritance-governance.md).
+  Load the installed `context-handoff` Skill only at its documented context
+  thresholds.
+- When an optional operator profile exists, read
+  [`references/operator-preferences.md`](references/operator-preferences.md)
+  and apply only enabled fields.
+
+Do not add a durable Agent, database, message bus, generic workflow/DAG, policy
+engine, evidence registry, or agent runtime to implement this loop. A new
+abstraction must name the real regression it prevents; persisted state must not
+be cheaply recoverable from the environment.

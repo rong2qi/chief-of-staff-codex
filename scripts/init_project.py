@@ -2154,7 +2154,16 @@ def initialize(
             fresh_project = json.loads(expected)
             fresh_project["work_execution_version"] = work_execution.VERSION
             _, identity, source_commit = work_execution._source_identity()
-            fresh_project.update(chief_version=identity["version"], chief_schema_version=identity["schema_version"], chief_source_commit=source_commit)
+            identity_fields = dict(
+                chief_version=identity["version"],
+                chief_schema_version=identity["schema_version"],
+                chief_source_commit=source_commit,
+            )
+            if identity.get("goal_loop_version") is not None:
+                identity_fields["goal_loop_version"] = identity["goal_loop_version"]
+            else:
+                fresh_project.pop("goal_loop_version", None)
+            fresh_project.update(identity_fields)
             expected = encoded_json(fresh_project)
         if existing_project is None and relative.name == "project-plan.json":
             fresh_plan = json.loads(expected)

@@ -137,10 +137,64 @@ class WorkExecutionTests(unittest.TestCase):
         we.adopt(self.root, decision_ref='user:adopt-v1', apply=True)
         self.assertEqual(we.adopt(self.root, decision_ref='user:adopt-v1', apply=True)['changes'], [])
 
+    def test_explicit_v3_sync_preserves_v2_unknown_history_approvals_and_failures(self):
+        project = read(self.root, 'project.json')
+        project.pop('goal_loop_version', None)
+        project['chief_version'] = '2.0.2'
+        project['unknown_extension'] = {'preserve': True}
+        project['retained_approvals'] = ['approval-v2']
+        project['retained_failures'] = [{'id': 'failure-v2', 'status': 'open'}]
+        save(self.root, 'project.json', project)
+        plan = read(self.root, 'project-plan.json')
+        plan['unknown_history_extension'] = {'event_ids': ['event-v2']}
+        save(self.root, 'project-plan.json', plan)
+        lock = read(self.root, 'chief-lock.json')
+        lock['version'] = '2.0.2'
+        save(self.root, 'chief-lock.json', lock)
+        approvals_before = (self.root / '.chief-of-staff/approval-queue.json').read_bytes()
+        before = {
+            path.relative_to(self.root): path.read_bytes()
+            for path in self.root.rglob('*') if path.is_file()
+        }
+
+        preview = we.sync_project(
+            self.root, decision_ref='user:chief-v3-approved', apply=False)
+        self.assertIn('.chief-of-staff/project.json', preview['changes'])
+        self.assertEqual(
+            before,
+            {path.relative_to(self.root): path.read_bytes()
+             for path in self.root.rglob('*') if path.is_file()},
+        )
+
+        applied = we.sync_project(
+            self.root, decision_ref='user:chief-v3-approved', apply=True)
+        self.assertTrue(applied['applied'])
+        migrated = read(self.root, 'project.json')
+        self.assertEqual(migrated['goal_loop_version'], 'GOAL_LOOP_V1')
+        self.assertEqual(migrated['unknown_extension'], {'preserve': True})
+        self.assertEqual(migrated['retained_approvals'], ['approval-v2'])
+        self.assertEqual(
+            migrated['retained_failures'], [{'id': 'failure-v2', 'status': 'open'}])
+        self.assertEqual(
+            read(self.root, 'project-plan.json')['unknown_history_extension'],
+            {'event_ids': ['event-v2']},
+        )
+        self.assertEqual(
+            (self.root / '.chief-of-staff/approval-queue.json').read_bytes(),
+            approvals_before,
+        )
+
     def test_current_source_bytes_are_verified_before_action(self):
         (self.root / 'source.txt').write_text('changed source after static pass')
         with self.assertRaisesRegex(we.WorkExecutionError, 'evidence bytes changed'):
             we.check_work(self.root, 'w1')
+
+    def test_public_retained_proof_validator_rejects_changed_bytes(self):
+        retained = proof(self.root, 'claim.txt', 'observed user path passed')
+        we.validate_retained_proof(self.root, retained)
+        (self.root / 'claim.txt').write_text('changed')
+        with self.assertRaisesRegex(we.WorkExecutionError, 'evidence bytes changed'):
+            we.validate_retained_proof(self.root, retained)
 
     def test_cancelled_record_does_not_exempt_uncovered_production(self):
         self.edit(lambda p: p['work_items'][0].update(status='cancelled'))

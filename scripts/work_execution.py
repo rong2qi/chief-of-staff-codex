@@ -107,6 +107,11 @@ def _root(target):
     return root
 
 
+def validate_retained_proof(root, value):
+    """Validate existing repository-bound proof bytes for trusted callers."""
+    _proof(_root(root), value)
+
+
 def _structure(root, project, plan, registry, work):
     if not isinstance(work, dict):
         raise WorkExecutionError('work item must be an object')
@@ -551,13 +556,20 @@ def sync_project(target, *, decision_ref, apply=False, source_commit=None,
             return {'changes': [], 'conflicts': errors, 'applied': False}
         project = _read(root, 'project.json')
         plan = _read(root, 'project-plan.json')
-        if old_lock and old_lock.get('source_commit') == commit and old_lock.get('version') == version['version'] and enabled(project):
+        goal_loop_version = version.get('goal_loop_version')
+        if (old_lock and old_lock.get('source_commit') == commit
+                and old_lock.get('version') == version['version']
+                and enabled(project)
+                and (goal_loop_version is None
+                     or project.get('goal_loop_version') == goal_loop_version)):
             return {'changes': [], 'conflicts': [], 'applied': False}
         if project.get('work_execution_version') not in {None, VERSION}:
             raise WorkExecutionError('unknown work execution version')
         if project.get('paused') or any(t.get('status') == 'running' for t in _read(root, 'task-registry.json').get('tasks', [])) or any(w.get('status') == 'running' for w in plan.get('work_items', [])):
             return {'changes': [], 'conflicts': ['adopt at a safe boundary; running/paused work retained'], 'applied': False}
         project['work_execution_version'] = VERSION
+        if goal_loop_version is not None:
+            project['goal_loop_version'] = goal_loop_version
         project['chief_version'] = version['version']
         project['chief_schema_version'] = version['schema_version']
         project['chief_source_commit'] = commit

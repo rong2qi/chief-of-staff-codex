@@ -2,6 +2,26 @@
 
 ![Chief of Staff — 像素少女统筹工作室 / Pixel-art coordination studio](assets/readme/banner.png)
 
+## v3.0.0：目标驱动薄执行层 / Goal-driven thin execution layer
+
+本地 v3.0.0 候选把 Chief 核心收敛为一个从既有状态与新鲜观察投影的
+Goal Record、一次只选择一个动作的 Next Action Loop，以及绑定真实观察的
+Acceptance Claim/Proof。交付宿主与固定只读参考源分别记录；本地修改、commit、
+push、release/deploy、生产变更和交付仍是互不继承的独立效果。真实用户路径可用时，
+组件绿灯不能替代它；策略或准入函数返回成功也不会凭空创造宿主能力。
+
+The local v3.0.0 candidate declares contract schema `2`,
+`WORK_EXECUTION_V1`, and `GOAL_LOOP_V1`. New projects receive the Goal Loop
+field; v2 projects adopt it only through an explicit preview/apply sync. The
+active entry is intentionally small and loads rules by observable action
+trigger. All v2 behavior remains byte-preserved at
+[`references/chief-v2-compat.md`](references/chief-v2-compat.md), while the v3
+contract and executable seam live in [`V3_SPEC.md`](V3_SPEC.md),
+[`V3_ACCEPTANCE.md`](V3_ACCEPTANCE.md), and
+[`scripts/goal_loop.py`](scripts/goal_loop.py). This candidate is not a tag or
+published release; installation, project migration, commit, push, and release
+remain separate authorized actions.
+
 ## v2.0.2：证据复用、风险驱动、非阻塞测试 / Evidence-aware, risk-based, non-blocking Testing
 
 让证据帮助工作向前走。꒰ঌ(っ˘꒳˘ｃ)‪໒꒱
